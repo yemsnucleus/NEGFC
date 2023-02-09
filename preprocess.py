@@ -111,7 +111,7 @@ def plot_to_compare(images, titles, axes=None):
 	plt.show()
 	return axes 
 
-def fit_gaussian_2d(image, fwhmx=4, fwhmy=4):
+def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
 	""" Fit a 2 dimensional gaussian
 	
 	This method first creates a gaussian model from the parameters of images. 
@@ -151,11 +151,70 @@ def fit_gaussian_2d(image, fwhmx=4, fwhmy=4):
 	fwhm_x_e /= gaussian_fwhm_to_sigma
 	fwhm_y_e /= gaussian_fwhm_to_sigma
 
-	# plot_to_compare([image, fit(x, y)], ['Original', 'Model'])
+	if plot:
+		plot_to_compare([image, fit(x, y)], ['Original', 'Model'])
 
 	return fwhm_y, fwhm_x, mean_y, mean_x
 
-def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225):
+def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
+	"""Recenter a cube of frames based on a frame reference
+	
+	Using the estimated FWHM we fit gaussian models to center a sequence of frames 
+	:param cube: A cube containing frames
+	:type cube: numpy.ndarray
+	:param ref_frame: A reference frame (e.g., the first PSF)
+	:type ref_frame: numpy.ndarray
+	:param fwhm_sphere: Full-Width at Half Maximum value to initialice the gaussian model, defaults to 4
+	:type fwhm_sphere: number, optional
+	:param subi_size: Size of the square subimage sides in pixels. must be even, defaults to 7
+	:type subi_size: number, optional
+	:returns: A recentered cube of frames
+	:rtype: {numpy.ndarray}
+	"""
+	n_frames, sizey, sizex = cube.shape
+	fwhm 		 = np.ones(n_frames) * fwhm_sphere
+	pos_y, pos_x = frame_center(ref_frame)
+
+	psf_rec 	 = np.empty_like(cube) # template for the reconstruction
+
+	# ================================================================================================================
+	# Function to distribute (i.e., what it is inside the for loop)
+	def cut_fit_shift(frame, size, fwhm, y, x, plot=False):
+		# Cut the frame en put the center in the (x,y) from the reference frame
+		sub, y1, x1 = get_square(frame, size=size, y=y, x=x, position=True)
+
+		if plot:
+			# [Only for visualization] Negative gaussian fit
+			sub_to_plot = sub
+			sub_image = -sub + np.abs(np.min(-sub))
+			plot_to_compare([sub_to_plot, sub_image], ['Original', 'Negative'])
+
+		_, _, y_i, x_i = fit_gaussian_2d(sub, fwhmx=fwhm, fwhmy=fwhm)
+		y_i += y1
+		x_i += x1
+		# 
+		shift_x = x - x_i
+		shift_y = y - y_i 
+		# Going back to the original frame
+		centered = frame_shift(frame, shift_y, shift_x, 
+							   imlib='vip-fft', # does a fourier shift operation
+							   interpolation='lanczos4', # Lanczos
+							   border_mode='reflect') # input extended by reflecting about the edge of the last pixel.
+		return centered
+	# ================================================================================================================
+	# Iterates over the PSF in a distributed manner
+	shifted_cube = Parallel(n_jobs=n_jobs)(delayed(cut_fit_shift)(cube[fnum],
+	    														  size=subi_size,
+	    														  fwhm=fwhm[fnum], 
+													   			  y=pos_y, x=pos_x,
+													   			  plot=False) \
+										   for fnum in range(n_frames))
+	shifted_cube = np.array(shifted_cube) # put all together as a numpy array
+
+	return shifted_cube
+
+
+def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1):
 	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
 	
 	:param cube_path: Path to the cube image
@@ -180,7 +239,7 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	# Check cube dimensions
 	if cube.shape[-1] % 2 == 0:
 		print('[WARNING] Cube contains odd frames. Shifting and rescaling...')
-		cube = shift_and_crop_cube(cube[wavelength], n_jobs=4)
+		cube = shift_and_crop_cube(cube[wavelength], n_jobs=n_jobs)
 
 	single_psf = psf[wavelength, psf_pos, :-1, :-1]
 	ceny, cenx = frame_center(single_psf)
@@ -193,43 +252,15 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	                                      position=True, 
 	                                      verbose=False)
 
-	# plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
+	plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
 	
-	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage)
+	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=True)
 	mean_y +=  suby # put the subimage in the original center
 	mean_x +=  subx # put the subimage in the original center
 
-	# =================================================================================================
-	# ====== cube_recenter_2dfit ======================================================================
-	# =================================================================================================
-	n_frames, sizey, sizex = psf[wavelength].shape
-	subi_size    = 7 # Size of the square subimage sides in pixels. must be even
-	fwhm_sphere  = np.mean([fwhm_y, fwhm_x]) 
-	fwhm 		 = np.ones(n_frames) * fwhm_sphere
-	pos_y, pos_x = frame_center(single_psf)
+	fwhm_sphere  = np.mean([fwhm_y, fwhm_x]) # Shared across the frames 
+	psf_rec = recenter_cube(psf[wavelength], single_psf, fwhm_sphere=fwhm_sphere, n_jobs=n_jobs)
 	
-	psf_rec 	 = np.empty_like(psf[wavelength]) # template for the reconstruction
-	# Iterates over the PSF frames (in this case n_frames=2)
-	for fnum in range(n_frames):
-		sub_image, y1, x1 = get_square(psf[wavelength, fnum], 
-									   size=subi_size, 
-									   y=pos_y, x=pos_x,
-									   position=True)
-
-		# Negative gaussian fit
-		# sub_to_plot = sub_image
-		# sub_image = -sub_image + np.abs(np.min(-sub_image))
-		# plot_to_compare([sub_to_plot, sub_image], ['Original', 'Negative'])
-
-		_, _, y_i, x_i = fit_gaussian_2d(sub_image, fwhmx=fwhm[fnum], fwhmy=fwhm[fnum])
-		y_i += suby
-		x_i += subx
-		
-		psf_rec[fnum] = frame_shift(psf[wavelength, fnum], y_i, x_i, 
-								    imlib='vip-fft', # does a fourier shift operation
-								    interpolation='lanczos4', # Lanczos
-								    border_mode='reflect') # input extended by reflecting about the edge of the last pixel.
-
 	# Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
 	# It also allows to crop the array and center the PSF at the center of the array(s).
 	psf_norm, fwhm_flux,fwhm = normalize_psf(psf_rec[psf_pos], 
@@ -239,8 +270,10 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	                                         mask_core=None,
 	                                         full_output=True, 
 	                                         verbose=False) 
+	plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
 
-	#plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
+
+
 
 
 if __name__ == '__main__':
@@ -255,4 +288,4 @@ if __name__ == '__main__':
 	psf_path     = './data/HCI/median_unsat.fits' # Why this name?
 	rot_ang_path = './data/HCI/rotnth.fits'
 
-	run_pipeline(cube_path, psf_path, rot_ang_path)
+	run_pipeline(cube_path, psf_path, rot_ang_path, n_jobs=2)
