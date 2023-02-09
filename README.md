@@ -22,4 +22,7 @@ In progress...
 - [`frame_shift`](https://vip.readthedocs.io/en/latest/vip_hci.preproc.html?highlight=frame_shift#vip_hci.preproc.recentering.frame_shift)
 
 ## To-do
-- cosmetics
+- ~cosmetics~
+- moon detection
+- visualize residuals
+- estimate parameters of moons
