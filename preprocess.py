@@ -111,6 +111,22 @@ def plot_to_compare(images, titles, axes=None):
 	plt.show()
 	return axes 
 
+def plot_cube(cube):
+	for i in range(cube[0].shape[0]):
+	y, x = frame_center(cube[0][i])
+	frame_0= get_square(cube[0][i], size=40, y=y, x=x, position=False)
+	y, x = frame_center(cube[1][i])
+	frame_1= get_square(cube[1][i], size=40, y=y, x=x, position=False)
+
+	fig, axes = plt.subplots(1, 2, dpi=200)
+	axes[0].imshow(np.log(frame_0))
+	axes[1].imshow(np.log(frame_1))
+	axes[0].set_title(r'$\lambda = H2$')
+	axes[1].set_title(r'$\lambda = H1$')
+	fig.text(.38, .85, f'{i}-th frame from the cube', va='center', rotation='horizontal')
+	plt.show()
+	# plt.savefig(f'./figures/cube_gif/{i}.png', format='png',  bbox_inches = "tight")
+	
 def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
 	""" Fit a 2 dimensional gaussian
 	
@@ -271,9 +287,6 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	                                         full_output=True, 
 	                                         verbose=False) 
 	plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
-
-
-
 
 
 if __name__ == '__main__':
