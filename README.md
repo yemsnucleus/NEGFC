@@ -2,6 +2,10 @@
 
 **Neg**ative **F**ake **C**ompanion (NegFC) is a direct imagining technique used to subtract the contribution of a companion in raw data.
 
+<p align="center">
+<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/cube.gif"  width="600" height="350">
+</p>
+
 From an educational perspective, some functions, such as `fit_2dgaussian` and  `cube_recenter_2dfit`, were re-written from scratch to make explicit the steps behind the blackbox. We followed the same logic as the official implementations (see Section [Used Functions](#used-functions) )
 
 
@@ -27,4 +31,7 @@ In progress...
 - [`peak_local_max`](https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/feature/peak.py#L119-L326)
 
 ## To-do
-- cosmetics
+- ~cosmetics~
+- moon detection
+- visualize residuals
+- estimate parameters of moons
