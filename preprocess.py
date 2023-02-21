@@ -1,17 +1,24 @@
 import matplotlib.pyplot as plt
+import pickle as pkl
 import numpy as np
 
 from joblib import Parallel, delayed
 
 from vip_hci.preproc.recentering import frame_shift, frame_center, cube_recenter_2dfit
+from vip_hci.preproc.derotation  import frame_rotate, cube_derotate
+from vip_hci.var.shapes			 import get_square, prepare_matrix
 from vip_hci.preproc.cosmetics 	 import cube_crop_frames
+from vip_hci.preproc.parangles   import check_pa_vector
 from vip_hci.var 				 import fit_2dgaussian
 from vip_hci.fm 				 import normalize_psf
-from vip_hci.var.shapes			 import get_square
 from vip_hci.fits 				 import open_fits
+from vip_hci.psfsub.pca_fullfr   import pca, _adi_pca
+
+from skimage.feature import peak_local_max
+from sklearn.decomposition import NMF
 
 # Factor with which to multiply Gaussian FWHM to convert it to 1-sigma standard deviation
-from astropy.stats 				 import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
+from astropy.stats 				 import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm, sigma_clipped_stats
 from astropy.modeling 			 import models, fitting
 
 from photutils.centroids 		 import centroid_com
@@ -111,22 +118,32 @@ def plot_to_compare(images, titles, axes=None):
 	plt.show()
 	return axes 
 
-def plot_cube(cube):
-	for i in range(cube[0].shape[0]):
-	y, x = frame_center(cube[0][i])
-	frame_0= get_square(cube[0][i], size=40, y=y, x=x, position=False)
-	y, x = frame_center(cube[1][i])
-	frame_1= get_square(cube[1][i], size=40, y=y, x=x, position=False)
-
-	fig, axes = plt.subplots(1, 2, dpi=200)
-	axes[0].imshow(np.log(frame_0))
-	axes[1].imshow(np.log(frame_1))
-	axes[0].set_title(r'$\lambda = H2$')
-	axes[1].set_title(r'$\lambda = H1$')
-	fig.text(.38, .85, f'{i}-th frame from the cube', va='center', rotation='horizontal')
-	plt.show()
-	# plt.savefig(f'./figures/cube_gif/{i}.png', format='png',  bbox_inches = "tight")
+def plot_cube(cube, save=False):
+	""" Plot each frame from a cube
 	
+	:param cube: A cube containing frames
+	:type cube: numpy.ndarray
+	:param save: Write each frame figure, defaults to False
+	:type save: bool, optional
+	"""
+	for i in range(cube[0].shape[0]):
+		y, x = frame_center(cube[0][i])
+		frame_0= get_square(cube[0][i], size=40, y=y, x=x, position=False)
+		y, x = frame_center(cube[1][i])
+		frame_1= get_square(cube[1][i], size=40, y=y, x=x, position=False)
+
+		fig, axes = plt.subplots(1, 2, dpi=200)
+		axes[0].imshow(np.log(frame_0))
+		axes[1].imshow(np.log(frame_1))
+		axes[0].set_title(r'$\lambda = H2$')
+		axes[1].set_title(r'$\lambda = H1$')
+		fig.text(.38, .85, f'{i}-th frame from the cube', va='center', rotation='horizontal')
+		if save:
+			plt.savefig(f'./figures/cube_gif/{i}.png', format='png',  bbox_inches = "tight")
+		else:
+			plt.show()
+			break
+
 def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
 	""" Fit a 2 dimensional gaussian
 	
@@ -229,6 +246,69 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
 
 	return shifted_cube
 
+def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
+	""" Reduce cube using Angular Differential Imaging (ADI) techinique. 
+	
+	This function reduce the frame-axis dimension of the cube to 1
+	We subtract the principal components to each original frame (residuals).
+	Using the rotation angles we center all the frames and reduce them to the median. 
+	If more than one channels were provided, we calculate the mean of the medians per wavelength.
+	:param cube: A cube containing frames
+	:type cube: numpy.ndarray
+	:param rot_angles: Rotation angles used to center residual frames
+	:type rot_angles: numpy.ndarray
+	:param ncomp: Number of component to reduce in the frames axis, defaults to 1
+	:type ncomp: number, optional
+	:param fwhm_sphere: Full-Width at Half Maximum value to initialice the gaussian model, defaults to 4
+	:type fwhm_sphere: number, optional
+	:param plot: If true, displays original frame vs reconstruction, defaults to False
+	:type plot: bool, optional
+	:returns: Median of centered residuals
+	:rtype: {np.ndarray}
+	"""
+	nch, nz, ny, nx = cube.shape
+	fwhm = [fwhm]*nch
+	ncomp_list = [ncomp]*nch # It reduce the cube to 1 dimension for each channel
+
+	pclist_nch, frlist_nch, residuals_nch, collapsed_nch = [], [], [], [] 
+	for ch in range(nch):
+		n, y, x = cube[ch].shape
+		rot_angles = check_pa_vector(rot_angles)
+		ncomp = min(ncomp_list[ch], n)
+
+		# Build the matrix for the SVD/PCA and other matrix decompositions. (flatten the cube)
+		matrix = prepare_matrix(cube[ch], mode='fullfr', verbose=False)
+		# DO SVD on the matrix values
+		U, S, V = np.linalg.svd(matrix.T, full_matrices=False)
+		U = U[:, :ncomp].T
+		
+		transformed   = np.dot(U, matrix.T)
+		reconstructed = np.dot(transformed.T, U)
+		residuals     = matrix - reconstructed
+
+		residuals 	  = residuals.reshape(residuals.shape[0], y, x)
+		reconstructed = reconstructed.reshape(reconstructed.shape[0], y, x)
+		matrix 		  = residuals.reshape(matrix.shape[0], y, x)
+		p_components  = U.reshape(U.shape[0], y, x)
+
+		if plot:
+			plot_to_compare([matrix[0], p_components[0]], ['Original', 'Reconstructed'])
+
+		array_der = cube_derotate(residuals, rot_angles, nproc=n_jobs)
+		res_frame = np.nanmedian(array_der, axis=0) # ends truncate_svd_get_finframe
+
+		pclist_nch.append(p_components)
+		frlist_nch.append(reconstructed)
+		residuals_nch.append(residuals)
+		collapsed_nch.append(res_frame)
+
+	pclist_nch = np.array(pclist_nch)
+	frlist_nch = np.array(frlist_nch)
+	residuals_nch = np.array(residuals_nch)
+
+	# FINAL FRAME
+	frame = np.nanmean(collapsed_nch, axis=0)
+	return frame
 
 def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1):
 	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
@@ -250,7 +330,7 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	# First we load images from paths
 	cube       = open_fits(cube_path,    header=False) 
 	psf        = open_fits(psf_path,     header=False) 
-	rot_angles = open_fits(rot_ang_path, header=False) # didn't use. Should we use it when defininf the gaussian?
+	rot_angles = open_fits(rot_ang_path, header=False) # where they come from?
 
 	# Check cube dimensions
 	if cube.shape[-1] % 2 == 0:
@@ -268,9 +348,9 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	                                      position=True, 
 	                                      verbose=False)
 
-	plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
+	# plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
 	
-	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=True)
+	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=False)
 	mean_y +=  suby # put the subimage in the original center
 	mean_x +=  subx # put the subimage in the original center
 
@@ -279,15 +359,101 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	
 	# Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
 	# It also allows to crop the array and center the PSF at the center of the array(s).
-	psf_norm, fwhm_flux,fwhm = normalize_psf(psf_rec[psf_pos], 
-	                                         fwhm=fwhm_sphere,
-	                                         size=None, 
-	                                         threshold=None, 
-	                                         mask_core=None,
-	                                         full_output=True, 
-	                                         verbose=False) 
-	plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
+	psf_norm, fwhm_flux, fwhm = normalize_psf(psf_rec[psf_pos], 
+	                                          fwhm=fwhm_sphere,
+	                                          size=None, 
+	                                          threshold=None, 
+	                                          mask_core=None,
+	                                          full_output=True, 
+	                                          verbose=False) 
+	# plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
 
+	# ======== MOON DETECTION =========
+	frame = reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=n_jobs)
+	# Blob can be defined as a region of an image in which some properties are constant or 
+	# vary within a prescribed range of values.
+	# detection(frame, fwhm=fwhm, psf=psf_norm, bkg_sigma=5, snr_thresh=5)
+	coords = get_intersting_coords(frame, fwhm, bkg_sigma=5, pad_value=10, plot=False)
+
+def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
+	"""Get coordinates of potential companions
+	
+	This method infer the background noise and find coordinates that contains most luminous 
+	sources. After getting coordinates, it filter them by:
+		1. checking that the amplitude is positive > 0
+		2. checking whether the x and y centroids of the 2d gaussian fit
+		   coincide with the center of the subimage (within 2px error)
+		3. checking whether the mean of the fwhm in y and x of the fit are close to 
+		   the FWHM_PSF with a margin of 3px
+	:param frame: Reduced 2-dim image after applying reduce_pca
+	:type frame: np.ndarray
+	:param fwhm: full-width at half maximum comming from the normalized PSF, defaults to 4
+	:type fwhm: number, optional
+	:param bkg_sigma: The number of standard deviations to use for both the lower and upper clipping limit, defaults to 5
+	:type bkg_sigma: number, optional
+	:param plot: If true, displays original frame vs reconstruction, defaults to False
+	:type plot: bool, optional
+	:returns: A set of coordinates of potential companions
+	:rtype: {List of pairs}
+	"""
+	#Calculate sigma-clipped statistics on the provided data.
+	_, median, stddev = sigma_clipped_stats(frame, sigma=bkg_sigma, maxiters=None)
+	bkg_level = median + (stddev * bkg_sigma)
+	threshold = bkg_level
+
+	# returns the coordinates of local peaks (maxima) in an image.
+	coords_temp = peak_local_max(frame, threshold_abs=bkg_level,
+								 min_distance=int(np.ceil(fwhm)),
+								 num_peaks=20)
+
+	# Padding the image with zeros to avoid errors at the edges
+	pad_value = 10
+	array_padded = np.pad(frame, pad_width=pad_value, mode='constant', constant_values=0)
+	if plot:
+		plot_to_compare([frame, array_padded], ['Original', 'Padded'])
+
+	# ===================================================================================
+	y_temp = coords_temp[:, 0]
+	x_temp = coords_temp[:, 1]
+	coords = []
+	# Fitting a 2d gaussian to each local maxima position
+	for y, x in zip(y_temp, x_temp):
+		subsi = 3 * int(np.ceil(fwhm)) # Zone to fit the gaussian
+		if subsi % 2 == 0:
+		    subsi += 1
+
+		scy = y + pad_value
+		scx = x + pad_value
+
+		subim, suby, subx = get_square(array_padded, 
+									   subsi, scy, scx,
+									   position=True, force=True,
+									   verbose=False)
+		cy, cx = frame_center(subim)
+		gauss = models.Gaussian2D(amplitude=subim.max(), x_mean=cx,
+								  y_mean=cy, theta=0,
+								  x_stddev=fwhm*gaussian_fwhm_to_sigma,
+							      y_stddev=fwhm*gaussian_fwhm_to_sigma)
+
+		sy, sx = np.indices(subim.shape)
+		fitter = fitting.LevMarLSQFitter()
+		fit = fitter(gauss, sx, sy, subim)
+		
+		if plot:
+			y, x = np.indices(subim.shape)	
+			plot_to_compare([subim, fit(x, y)], ['subimage', 'gaussian'])
+
+		# Filtering PRocess
+		fwhm_y = fit.y_stddev.value * gaussian_sigma_to_fwhm
+		fwhm_x = fit.x_stddev.value * gaussian_sigma_to_fwhm
+		mean_fwhm_fit = np.mean([np.abs(fwhm_x), np.abs(fwhm_y)])
+		condyf = np.allclose(fit.y_mean.value, cy, atol=2)
+		condxf = np.allclose(fit.x_mean.value, cx, atol=2)
+		condmf = np.allclose(mean_fwhm_fit, fwhm, atol=3)
+		if fit.amplitude.value > 0 and condxf and condyf and condmf:
+			coords.append((suby + fit.y_mean.value,
+						   subx + fit.x_mean.value))
+	return coords
 
 if __name__ == '__main__':
 
@@ -301,4 +467,4 @@ if __name__ == '__main__':
 	psf_path     = './data/HCI/median_unsat.fits' # Why this name?
 	rot_ang_path = './data/HCI/rotnth.fits'
 
-	run_pipeline(cube_path, psf_path, rot_ang_path, n_jobs=2)
+	run_pipeline(cube_path, psf_path, rot_ang_path, n_jobs=5)
