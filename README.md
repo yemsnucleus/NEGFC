@@ -9,11 +9,35 @@
 From an educational perspective, some functions, such as `fit_2dgaussian` and  `cube_recenter_2dfit`, were re-written from scratch to make explicit the steps behind the blackbox. We followed the same logic as the official implementations (see Section [Used Functions](#used-functions) )
 
 ## Pipeline Description
-<p align="center">
-<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/pipeline_preprocessing.png?raw=true" 
-     width="700" 
-     height="400" />
-</p>
+1. Crop and shift a cube (even dimensions)
+2. Find the center of the PSF
+3. Cut the PSF focusing on the star 
+
+<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/pipeline_2.png?raw=true" 
+     width="=300" 
+     height="200" />
+     
+5. Fit a 2-dimensional gaussian to the PSF
+
+<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/pipeline_2.png?raw=true" 
+     width="=300" 
+     height="200" />
+     
+6. From the gaussian model we obtain the center of the star (mean) and FWHM (std)
+7. We shift the center to the original dimensions (since we cutted it on step 3)
+8. Average the x/y FWHM assuming an sphere
+9. Using a reference PSF frame (FWHM sphere and x/y center), we center the sequence of PSF (cube). For each frame:
+    1. we cut a sub-image using the center of the reference PSF
+    2. fit a gaussian starting with the fwhm of the sphere
+    3. with the new center coordinates, we shift the frame to be aligned with the reference PSF
+10. Normalize a PSF to have flux in 1xFWHM aperture equal to one.
+
+<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/pipeline_3.png?raw=true" 
+     width="=300" 
+     height="200" />
+
+At the end of this step, we got a normalized reference PSF, FWHM aperture, and FWHM
+
 
 ## Used Functions
 
