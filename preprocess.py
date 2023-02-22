@@ -310,71 +310,6 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
 	frame = np.nanmean(collapsed_nch, axis=0)
 	return frame
 
-def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1):
-	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
-	
-	:param cube_path: Path to the cube image
-	:type cube_path: string
-	:param psf_path: Path to the PSF image
-	:type psf_path: string
-	:param rot_ang_path: Path to the rotation angles
-	:type rot_ang_path: string
-	:param wavelength: Wavelength to use (H2=0  H3=1 / K1=0  K2=1), defaults to 0
-	:type wavelength: number, optional
-	:param psf_pos: Either the initial (0) or final (1) PSF, defaults to 0
-	:type psf_pos: number, optional
-	:param pixel_scale: pixel scale arcsec/pixel, defaults to 0.01225 from IRDIS/SPHERE
-	:type pixel_scale: number, optional
-	"""
-		
-	# First we load images from paths
-	cube       = open_fits(cube_path,    header=False) 
-	psf        = open_fits(psf_path,     header=False) 
-	rot_angles = open_fits(rot_ang_path, header=False) # where they come from?
-
-	# Check cube dimensions
-	if cube.shape[-1] % 2 == 0:
-		print('[WARNING] Cube contains odd frames. Shifting and rescaling...')
-		cube = shift_and_crop_cube(cube[wavelength], n_jobs=n_jobs)
-
-	single_psf = psf[wavelength, psf_pos, :-1, :-1]
-	ceny, cenx = frame_center(single_psf)
-	imside = single_psf.shape[0]
-	cropsize = 30
-
-	psf_subimage, suby, subx = get_square(single_psf, 
-										  min(cropsize, imside),
-	                                      ceny, cenx, 
-	                                      position=True, 
-	                                      verbose=False)
-
-	# plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
-	
-	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=False)
-	mean_y +=  suby # put the subimage in the original center
-	mean_x +=  subx # put the subimage in the original center
-
-	fwhm_sphere  = np.mean([fwhm_y, fwhm_x]) # Shared across the frames 
-	psf_rec = recenter_cube(psf[wavelength], single_psf, fwhm_sphere=fwhm_sphere, n_jobs=n_jobs)
-	
-	# Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
-	# It also allows to crop the array and center the PSF at the center of the array(s).
-	psf_norm, fwhm_flux, fwhm = normalize_psf(psf_rec[psf_pos], 
-	                                          fwhm=fwhm_sphere,
-	                                          size=None, 
-	                                          threshold=None, 
-	                                          mask_core=None,
-	                                          full_output=True, 
-	                                          verbose=False) 
-	# plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
-
-	# ======== MOON DETECTION =========
-	frame = reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=n_jobs)
-	# Blob can be defined as a region of an image in which some properties are constant or 
-	# vary within a prescribed range of values.
-	# detection(frame, fwhm=fwhm, psf=psf_norm, bkg_sigma=5, snr_thresh=5)
-	coords = get_intersting_coords(frame, fwhm, bkg_sigma=5, pad_value=10, plot=False)
-
 def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
 	"""Get coordinates of potential companions
 	
@@ -454,6 +389,71 @@ def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
 			coords.append((suby + fit.y_mean.value,
 						   subx + fit.x_mean.value))
 	return coords
+	
+def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1):
+	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
+	
+	:param cube_path: Path to the cube image
+	:type cube_path: string
+	:param psf_path: Path to the PSF image
+	:type psf_path: string
+	:param rot_ang_path: Path to the rotation angles
+	:type rot_ang_path: string
+	:param wavelength: Wavelength to use (H2=0  H3=1 / K1=0  K2=1), defaults to 0
+	:type wavelength: number, optional
+	:param psf_pos: Either the initial (0) or final (1) PSF, defaults to 0
+	:type psf_pos: number, optional
+	:param pixel_scale: pixel scale arcsec/pixel, defaults to 0.01225 from IRDIS/SPHERE
+	:type pixel_scale: number, optional
+	"""
+		
+	# First we load images from paths
+	cube       = open_fits(cube_path,    header=False) 
+	psf        = open_fits(psf_path,     header=False) 
+	rot_angles = open_fits(rot_ang_path, header=False) # where they come from?
+
+	# Check cube dimensions
+	if cube.shape[-1] % 2 == 0:
+		print('[WARNING] Cube contains odd frames. Shifting and rescaling...')
+		cube = shift_and_crop_cube(cube[wavelength], n_jobs=n_jobs)
+
+	single_psf = psf[wavelength, psf_pos, :-1, :-1]
+	ceny, cenx = frame_center(single_psf)
+	imside = single_psf.shape[0]
+	cropsize = 30
+
+	psf_subimage, suby, subx = get_square(single_psf, 
+										  min(cropsize, imside),
+	                                      ceny, cenx, 
+	                                      position=True, 
+	                                      verbose=False)
+
+	# plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
+	
+	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=False)
+	mean_y +=  suby # put the subimage in the original center
+	mean_x +=  subx # put the subimage in the original center
+
+	fwhm_sphere  = np.mean([fwhm_y, fwhm_x]) # Shared across the frames 
+	psf_rec = recenter_cube(psf[wavelength], single_psf, fwhm_sphere=fwhm_sphere, n_jobs=n_jobs)
+	
+	# Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
+	# It also allows to crop the array and center the PSF at the center of the array(s).
+	psf_norm, fwhm_flux, fwhm = normalize_psf(psf_rec[psf_pos], 
+	                                          fwhm=fwhm_sphere,
+	                                          size=None, 
+	                                          threshold=None, 
+	                                          mask_core=None,
+	                                          full_output=True, 
+	                                          verbose=False) 
+	# plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
+
+	# ======== MOON DETECTION =========
+	frame = reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=n_jobs)
+	# Blob can be defined as a region of an image in which some properties are constant or 
+	# vary within a prescribed range of values.
+	# detection(frame, fwhm=fwhm, psf=psf_norm, bkg_sigma=5, snr_thresh=5)
+	coords = get_intersting_coords(frame, fwhm, bkg_sigma=5, pad_value=10, plot=False)
 
 if __name__ == '__main__':
 
