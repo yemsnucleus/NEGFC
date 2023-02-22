@@ -6,6 +6,7 @@
      width="500" 
      height="300" />
 </p>
+
 From an educational perspective, some functions, such as `fit_2dgaussian` and  `cube_recenter_2dfit`, were re-written from scratch to make explicit the steps behind the blackbox. We followed the same logic as the official implementations (see Section [Used Functions](#used-functions) )
 
 ## Pipeline Description
