@@ -3,7 +3,6 @@ import pickle as pkl
 import numpy as np
 
 from joblib import Parallel, delayed
-
 from vip_hci.preproc.recentering import frame_shift, frame_center, cube_recenter_2dfit
 from vip_hci.preproc.derotation  import frame_rotate, cube_derotate
 from vip_hci.var.shapes			 import get_square, prepare_matrix
@@ -14,8 +13,9 @@ from vip_hci.fm 				 import normalize_psf
 from vip_hci.fits 				 import open_fits
 from vip_hci.psfsub.pca_fullfr   import pca, _adi_pca
 
-from skimage.feature import peak_local_max
-from sklearn.decomposition import NMF
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from skimage.feature 		 import peak_local_max
+from sklearn.decomposition   import NMF
 
 # Factor with which to multiply Gaussian FWHM to convert it to 1-sigma standard deviation
 from astropy.stats 				 import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm, sigma_clipped_stats
@@ -98,7 +98,7 @@ def fit_and_crop(cube, use_pos=0, n_jobs=1):
 
 	return cube_center, fwhm_sphere, model_2d
 
-def plot_to_compare(images, titles, axes=None):
+def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savefig_params):
 	""" Plot a list of images and their corresponding titles
 	
 	:param images: A list of 2dim images
@@ -111,11 +111,19 @@ def plot_to_compare(images, titles, axes=None):
 	:rtype: {matpllotlib.axes.Axes}
 	"""
 	if axes is None:
-		fig, axes = plt.subplots(1, len(images))
+		fig, axes = plt.subplots(1, len(images), dpi=300,
+			gridspec_kw={'hspace': 0., 'wspace': .4})
 	for i, (im, ti) in enumerate(zip(images, titles)):
-		axes[i].imshow(im)
+		im_obj = axes[i].imshow(im)
+		divider = make_axes_locatable(axes[i])
+		cax = divider.append_axes("right", size="5%", pad=0.05)
+		plt.colorbar(im_obj, cax=cax)
 		axes[i].set_title(ti)
-	plt.show()
+	if show:
+		plt.show()
+	if img_file:
+		fig.savefig(img_file, **savefig_params)
+
 	return axes 
 
 def plot_cube(cube, save=False):
@@ -127,14 +135,16 @@ def plot_cube(cube, save=False):
 	:type save: bool, optional
 	"""
 	for i in range(cube[0].shape[0]):
-		y, x = frame_center(cube[0][i])
-		frame_0= get_square(cube[0][i], size=40, y=y, x=x, position=False)
-		y, x = frame_center(cube[1][i])
-		frame_1= get_square(cube[1][i], size=40, y=y, x=x, position=False)
+		fig, axes = plt.subplots(1, 2, dpi=300,
+		gridspec_kw={'hspace': 0., 'wspace': .4})		
+		for k in range(2):
+			y, x  = frame_center(cube[k][i])
+			frame = get_square(cube[k][i], size=40, y=y, x=x, position=False)
+			im_obj = axes[k].imshow(np.log(frame))
+			divider = make_axes_locatable(axes[k])
+			cax = divider.append_axes("right", size="5%", pad=0.05)
+			plt.colorbar(im_obj, cax=cax)
 
-		fig, axes = plt.subplots(1, 2, dpi=200)
-		axes[0].imshow(np.log(frame_0))
-		axes[1].imshow(np.log(frame_1))
 		axes[0].set_title(r'$\lambda = H2$')
 		axes[1].set_title(r'$\lambda = H1$')
 		fig.text(.38, .85, f'{i}-th frame from the cube', va='center', rotation='horizontal')
@@ -142,7 +152,7 @@ def plot_cube(cube, save=False):
 			plt.savefig(f'./figures/cube_gif/{i}.png', format='png',  bbox_inches = "tight")
 		else:
 			plt.show()
-			break
+			
 
 def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
 	""" Fit a 2 dimensional gaussian
@@ -186,7 +196,6 @@ def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
 
 	if plot:
 		plot_to_compare([image, fit(x, y)], ['Original', 'Model'])
-
 	return fwhm_y, fwhm_x, mean_y, mean_x
 
 def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
@@ -378,10 +387,10 @@ def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
 			y, x = np.indices(subim.shape)	
 			plot_to_compare([subim, fit(x, y)], ['subimage', 'gaussian'])
 
-		# Filtering PRocess
 		fwhm_y = fit.y_stddev.value * gaussian_sigma_to_fwhm
 		fwhm_x = fit.x_stddev.value * gaussian_sigma_to_fwhm
 		mean_fwhm_fit = np.mean([np.abs(fwhm_x), np.abs(fwhm_y)])
+		# Filtering Process
 		condyf = np.allclose(fit.y_mean.value, cy, atol=2)
 		condxf = np.allclose(fit.x_mean.value, cx, atol=2)
 		condmf = np.allclose(mean_fwhm_fit, fwhm, atol=3)
@@ -389,8 +398,8 @@ def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
 			coords.append((suby + fit.y_mean.value,
 						   subx + fit.x_mean.value))
 	return coords
-	
-def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1):
+
+def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1, plot=False):
 	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
 	
 	:param cube_path: Path to the cube image
@@ -411,12 +420,15 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	cube       = open_fits(cube_path,    header=False) 
 	psf        = open_fits(psf_path,     header=False) 
 	rot_angles = open_fits(rot_ang_path, header=False) # where they come from?
+	# plot_cube(cube, save=True)
+	# plot_to_compare([psf[1][0], psf[1][1]], ['PSF init', 'PSF end'])
 
 	# Check cube dimensions
 	if cube.shape[-1] % 2 == 0:
 		print('[WARNING] Cube contains odd frames. Shifting and rescaling...')
 		cube = shift_and_crop_cube(cube[wavelength], n_jobs=n_jobs)
-
+	print(gaussian_sigma_to_fwhm)
+	return
 	single_psf = psf[wavelength, psf_pos, :-1, :-1]
 	ceny, cenx = frame_center(single_psf)
 	imside = single_psf.shape[0]
@@ -427,33 +439,34 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	                                      ceny, cenx, 
 	                                      position=True, 
 	                                      verbose=False)
+	if plot:
+		plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
 
-	# plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
-	
-	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=False)
+	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=plot)
 	mean_y +=  suby # put the subimage in the original center
 	mean_x +=  subx # put the subimage in the original center
-
+	
 	fwhm_sphere  = np.mean([fwhm_y, fwhm_x]) # Shared across the frames 
-	psf_rec = recenter_cube(psf[wavelength], single_psf, fwhm_sphere=fwhm_sphere, n_jobs=n_jobs)
+	psf_rec = recenter_cube(psf[wavelength], 
+							single_psf, 
+							fwhm_sphere=fwhm_sphere, 
+							n_jobs=n_jobs)
 	
 	# Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
 	# It also allows to crop the array and center the PSF at the center of the array(s).
 	psf_norm, fwhm_flux, fwhm = normalize_psf(psf_rec[psf_pos], 
 	                                          fwhm=fwhm_sphere,
-	                                          size=None, 
-	                                          threshold=None, 
-	                                          mask_core=None,
 	                                          full_output=True, 
 	                                          verbose=False) 
-	# plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
+	if plot:
+		plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
 
 	# ======== MOON DETECTION =========
-	frame = reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=n_jobs)
+	frame = reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=plot, n_jobs=n_jobs)
 	# Blob can be defined as a region of an image in which some properties are constant or 
 	# vary within a prescribed range of values.
 	# detection(frame, fwhm=fwhm, psf=psf_norm, bkg_sigma=5, snr_thresh=5)
-	coords = get_intersting_coords(frame, fwhm, bkg_sigma=5, pad_value=10, plot=False)
+	coords = get_intersting_coords(frame, fwhm, bkg_sigma=5, plot=plot)
 
 if __name__ == '__main__':
 
@@ -467,4 +480,5 @@ if __name__ == '__main__':
 	psf_path     = './data/HCI/median_unsat.fits' # Why this name?
 	rot_ang_path = './data/HCI/rotnth.fits'
 
-	run_pipeline(cube_path, psf_path, rot_ang_path, n_jobs=5)
+	run_pipeline(cube_path, psf_path, rot_ang_path, 
+		n_jobs=5, plot=True)
