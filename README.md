@@ -14,7 +14,7 @@ From an educational perspective, some functions, such as `fit_2dgaussian` and  `
 2. Find the center of the PSF
 3. Cut the PSF focusing on the star 
 
-<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/pipeline_2.png?raw=true" 
+<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/pipeline_1.png?raw=true" 
      width="=300" 
      height="200" />
      
