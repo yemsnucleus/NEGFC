@@ -9,6 +9,7 @@
 From an educational perspective, some functions, such as `fit_2dgaussian` and  `cube_recenter_2dfit`, were re-written from scratch to make explicit the steps behind the blackbox. We followed the same logic as the official implementations (see Section [Used Functions](#used-functions) )
 
 ## Pipeline Description
+### Preprocessing
 1. Crop and shift a cube (even dimensions)
 2. Find the center of the PSF
 3. Cut the PSF focusing on the star 
@@ -38,6 +39,9 @@ From an educational perspective, some functions, such as `fit_2dgaussian` and  `
 
 At the end of this step, we got a normalized reference PSF, FWHM aperture, and FWHM
 
+### Detection
+1.- For each frame within the cube we adjust a PCA
+... in progress...
 
 ## Used Functions
 
