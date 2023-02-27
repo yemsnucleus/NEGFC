@@ -60,6 +60,7 @@ At the end of this step, we got a normalized reference PSF, FWHM aperture, and F
 - [`sigma_clipped_stats`](https://docs.astropy.org/en/stable/api/astropy.stats.sigma_clipped_stats.html)
 	+ [`sigma_clip`](https://docs.astropy.org/en/stable/api/astropy.stats.sigma_clipping.SigmaClip.html#astropy.stats.SigmaClip)
 - [`peak_local_max`](https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/feature/peak.py#L119-L326)
+- [`snr`](https://vip.readthedocs.io/en/latest/_modules/vip_hci/metrics/snr_source.html#snr)
 
 ## To-do
 - ~cosmetics~

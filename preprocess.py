@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import pickle as pkl
 import numpy as np
+import pandas as pd
 
 from joblib import Parallel, delayed
 from vip_hci.preproc.recentering import frame_shift, frame_center, cube_recenter_2dfit
@@ -11,11 +12,10 @@ from vip_hci.preproc.parangles   import check_pa_vector
 from vip_hci.var 				 import fit_2dgaussian
 from vip_hci.fm 				 import normalize_psf
 from vip_hci.fits 				 import open_fits
-from vip_hci.psfsub.pca_fullfr   import pca, _adi_pca
+from vip_hci.metrics.snr_source  import snr
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from skimage.feature 		 import peak_local_max
-from sklearn.decomposition   import NMF
 
 # Factor with which to multiply Gaussian FWHM to convert it to 1-sigma standard deviation
 from astropy.stats 				 import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm, sigma_clipped_stats
@@ -115,6 +115,8 @@ def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savef
 			gridspec_kw={'hspace': 0., 'wspace': .4})
 	for i, (im, ti) in enumerate(zip(images, titles)):
 		im_obj = axes[i].imshow(im)
+		# axes[i].set_ylim(50, 150)
+		# axes[i].set_xlim(50, 150)
 		divider = make_axes_locatable(axes[i])
 		cax = divider.append_axes("right", size="5%", pad=0.05)
 		plt.colorbar(im_obj, cax=cax)
@@ -216,7 +218,6 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
 	n_frames, sizey, sizex = cube.shape
 	fwhm 		 = np.ones(n_frames) * fwhm_sphere
 	pos_y, pos_x = frame_center(ref_frame)
-
 	psf_rec 	 = np.empty_like(cube) # template for the reconstruction
 
 	# ================================================================================================================
@@ -275,51 +276,35 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
 	:returns: Median of centered residuals
 	:rtype: {np.ndarray}
 	"""
-	nch, nz, ny, nx = cube.shape
-	fwhm = [fwhm]*nch
-	ncomp_list = [ncomp]*nch # It reduce the cube to 1 dimension for each channel
+	nz, ny, nx = cube.shape
+	rot_angles = check_pa_vector(rot_angles)
 
-	pclist_nch, frlist_nch, residuals_nch, collapsed_nch = [], [], [], [] 
-	for ch in range(nch):
-		n, y, x = cube[ch].shape
-		rot_angles = check_pa_vector(rot_angles)
-		ncomp = min(ncomp_list[ch], n)
+	# Build the matrix for the SVD/PCA and other matrix decompositions. (flatten the cube)
+	matrix = prepare_matrix(cube, mode='fullfr', verbose=False)
+	# DO SVD on the matrix values
+	U, S, V = np.linalg.svd(matrix.T, full_matrices=False)
+	U = U[:, :ncomp].T
+	
+	transformed   = np.dot(U, matrix.T)
+	reconstructed = np.dot(transformed.T, U)
+	residuals     = matrix - reconstructed
 
-		# Build the matrix for the SVD/PCA and other matrix decompositions. (flatten the cube)
-		matrix = prepare_matrix(cube[ch], mode='fullfr', verbose=False)
-		# DO SVD on the matrix values
-		U, S, V = np.linalg.svd(matrix.T, full_matrices=False)
-		U = U[:, :ncomp].T
-		
-		transformed   = np.dot(U, matrix.T)
-		reconstructed = np.dot(transformed.T, U)
-		residuals     = matrix - reconstructed
+	residuals 	  = residuals.reshape(residuals.shape[0], ny, nx)
+	reconstructed = reconstructed.reshape(reconstructed.shape[0], ny, nx)
+	matrix 		  = matrix.reshape(matrix.shape[0], ny, nx)
+	p_components  = U.reshape(U.shape[0], ny, nx)
 
-		residuals 	  = residuals.reshape(residuals.shape[0], y, x)
-		reconstructed = reconstructed.reshape(reconstructed.shape[0], y, x)
-		matrix 		  = residuals.reshape(matrix.shape[0], y, x)
-		p_components  = U.reshape(U.shape[0], y, x)
+	# NOT SURE WHY rot_angles IS NEGATIVE
+	array_der = cube_derotate(residuals, -rot_angles, nproc=n_jobs, 
+							  imlib='vip-fft', interpolation='lanczos4')
+	res_frame = np.nanmedian(array_der, axis=0)
+	if plot:
+		plot_to_compare([matrix[0], reconstructed[0], residuals[0], res_frame], 
+						['Original', 'Reconstructed', 'Residuals', 'median'])
 
-		if plot:
-			plot_to_compare([matrix[0], p_components[0]], ['Original', 'Reconstructed'])
+	return res_frame
 
-		array_der = cube_derotate(residuals, rot_angles, nproc=n_jobs)
-		res_frame = np.nanmedian(array_der, axis=0) # ends truncate_svd_get_finframe
-
-		pclist_nch.append(p_components)
-		frlist_nch.append(reconstructed)
-		residuals_nch.append(residuals)
-		collapsed_nch.append(res_frame)
-
-	pclist_nch = np.array(pclist_nch)
-	frlist_nch = np.array(frlist_nch)
-	residuals_nch = np.array(residuals_nch)
-
-	# FINAL FRAME
-	frame = np.nanmean(collapsed_nch, axis=0)
-	return frame
-
-def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
+def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	"""Get coordinates of potential companions
 	
 	This method infer the background noise and find coordinates that contains most luminous 
@@ -337,16 +322,19 @@ def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
 	:type bkg_sigma: number, optional
 	:param plot: If true, displays original frame vs reconstruction, defaults to False
 	:type plot: bool, optional
-	:returns: A set of coordinates of potential companions
-	:rtype: {List of pairs}
+	:returns: A set of coordinates of potential companions and their associated fluxes
+	:rtype: {List of pairs, List of pairs}
 	"""
 	#Calculate sigma-clipped statistics on the provided data.
 	_, median, stddev = sigma_clipped_stats(frame, sigma=bkg_sigma, maxiters=None)
 	bkg_level = median + (stddev * bkg_sigma)
 	threshold = bkg_level
 
+	from scipy.ndimage.filters import correlate
+	frame_det = correlate(frame, psf_norm)
+
 	# returns the coordinates of local peaks (maxima) in an image.
-	coords_temp = peak_local_max(frame, threshold_abs=bkg_level,
+	coords_temp = peak_local_max(frame_det, threshold_abs=bkg_level,
 								 min_distance=int(np.ceil(fwhm)),
 								 num_peaks=20)
 
@@ -359,7 +347,8 @@ def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
 	# ===================================================================================
 	y_temp = coords_temp[:, 0]
 	x_temp = coords_temp[:, 1]
-	coords = []
+	coords, fluxes, fwhm_mean = [], [], []
+
 	# Fitting a 2d gaussian to each local maxima position
 	for y, x in zip(y_temp, x_temp):
 		subsi = 3 * int(np.ceil(fwhm)) # Zone to fit the gaussian
@@ -397,9 +386,26 @@ def get_intersting_coords(frame, fwhm=4, bkg_sigma = 5, plot=False):
 		if fit.amplitude.value > 0 and condxf and condyf and condmf:
 			coords.append((suby + fit.y_mean.value,
 						   subx + fit.x_mean.value))
-	return coords
+			fluxes.append(fit.amplitude.value)
+			fwhm_mean.append(mean_fwhm_fit)
 
-def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1, plot=False):
+	coords = np.array(coords)
+	yy = coords[:, 0] - pad_value
+	xx = coords[:, 1] - pad_value
+	
+	table = pd.DataFrame()
+	table['x']    = xx
+	table['y']    = yy
+	table['flux'] = fluxes
+	table['fwhm_mean'] = fwhm_mean
+	table['snr']  = table.apply(lambda col: snr(frame, 
+											 	(col['x'], col['y']), 
+											 	fwhm, False, verbose=False), axis=1)
+
+	return table
+
+def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, 
+				pixel_scale=0.01225, n_jobs=1, plot=False):
 	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
 	
 	:param cube_path: Path to the cube image
@@ -427,8 +433,7 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	if cube.shape[-1] % 2 == 0:
 		print('[WARNING] Cube contains odd frames. Shifting and rescaling...')
 		cube = shift_and_crop_cube(cube[wavelength], n_jobs=n_jobs)
-	print(gaussian_sigma_to_fwhm)
-	return
+
 	single_psf = psf[wavelength, psf_pos, :-1, :-1]
 	ceny, cenx = frame_center(single_psf)
 	imside = single_psf.shape[0]
@@ -462,11 +467,29 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 		plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
 
 	# ======== MOON DETECTION =========
-	frame = reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=plot, n_jobs=n_jobs)
+	frame = reduce_pca(cube[wavelength], rot_angles, ncomp=1, fwhm=4, plot=plot, n_jobs=n_jobs)
 	# Blob can be defined as a region of an image in which some properties are constant or 
 	# vary within a prescribed range of values.
-	# detection(frame, fwhm=fwhm, psf=psf_norm, bkg_sigma=5, snr_thresh=5)
-	coords = get_intersting_coords(frame, fwhm, bkg_sigma=5, plot=plot)
+	table = get_intersting_coords(frame, psf_norm, fwhm=fwhm, bkg_sigma=5, plot=plot)
+	snr_thresh = 2
+	table = table[table['snr'] > snr_thresh]
+
+
+	# How many FWHM we want to consider to fit the model
+	nfwhm = 3
+	fwhma = int(nfwhm)*float(fwhm_sphere)
+	# Cube to store the final model
+	cube_emp = np.zeros(cube[0].shape)
+	# Detection from coords NegFC
+	
+	fig, ax = plt.subplots()
+	ax.imshow(frame)
+	for _, row in table.iterrows():
+		circle = plt.Circle((row['x'], row['y']), row['fwhm_mean'], fill=False, edgecolor='r')	
+		ax.add_patch(circle)
+		ax.set_xlim(50, 150)
+		ax.set_ylim(50, 150)
+	plt.show()
 
 if __name__ == '__main__':
 
@@ -481,4 +504,4 @@ if __name__ == '__main__':
 	rot_ang_path = './data/HCI/rotnth.fits'
 
 	run_pipeline(cube_path, psf_path, rot_ang_path, 
-		n_jobs=5, plot=True)
+		n_jobs=5, plot=False)
