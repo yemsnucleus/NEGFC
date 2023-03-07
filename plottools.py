@@ -149,3 +149,86 @@ class AngleAnnotation(Arc):
             trans = self.ax.figure.dpi_scale_trans.inverted()
             offs = trans.transform(((X-s/2), 0))[0] * 72
             self.text.set_position([offs*np.cos(angle), offs*np.sin(angle)])
+
+def plot_angles(sub, x, y, index=0):
+    fig, ax = plt.subplots(nrows=1, ncols=1)
+    ax.imshow(sub, extent=[-sub.shape[1]/2., 
+                            sub.shape[1]/2., 
+                            -sub.shape[0]/2., 
+                            sub.shape[0]/2. ])
+
+    center = (0., 0.)
+    p1 = [(0., 0.), (x, y)]
+    p2 = [(0., 0.), (0., y)]
+    
+    axis_x = [(0., -1.2*y), (0., 1.2*y)]
+    axis_y = [(-1.2*x, 0.), (1.2*x, 0.)]
+
+    
+    line1, = ax.plot(*zip(*p1))
+    line2, = ax.plot(*zip(*p2))
+    line3, = ax.plot(*zip(*axis_x), color='k')
+    line4, = ax.plot(*zip(*axis_y), color='k')
+    point, = ax.plot(*center, marker="o")
+
+    am1 = AngleAnnotation(center, p1[1], p2[1], ax=ax, size=75, text=r"$\alpha$")
+    # fig.savefig('./figures/negfc/{}.png'.format(index))
+    plt.show()
+
+def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savefig_params):
+    """ Plot a list of images and their corresponding titles
+    
+    :param images: A list of 2dim images
+    :type images: list<numpy.ndarray>
+    :param titles: A list of titles
+    :type titles: list<string>
+    :param axes: Matplotlib predefined axes, defaults to None
+    :type axes: matplotlib.axes.Axes, optional
+    :returns: Axes with the image plots
+    :rtype: {matpllotlib.axes.Axes}
+    """
+    if axes is None:
+        fig, axes = plt.subplots(1, len(images), dpi=300,
+            gridspec_kw={'hspace': 0., 'wspace': .4})
+    for i, (im, ti) in enumerate(zip(images, titles)):
+        im_obj = axes[i].imshow(im)
+        # axes[i].set_ylim(50, 150)
+        # axes[i].set_xlim(50, 150)
+        divider = make_axes_locatable(axes[i])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(im_obj, cax=cax)
+        axes[i].set_title(ti)
+    if show:
+        plt.show()
+    if img_file:
+        fig.savefig(img_file, **savefig_params)
+
+    return axes 
+
+def plot_cube(cube, save=False):
+    """ Plot each frame from a cube
+    
+    :param cube: A cube containing frames
+    :type cube: numpy.ndarray
+    :param save: Write each frame figure, defaults to False
+    :type save: bool, optional
+    """
+    for i in range(cube[0].shape[0]):
+        fig, axes = plt.subplots(1, 2, dpi=300,
+        gridspec_kw={'hspace': 0., 'wspace': .4})       
+        for k in range(2):
+            y, x  = frame_center(cube[k][i])
+            frame = get_square(cube[k][i], size=40, y=y, x=x, position=False)
+            im_obj = axes[k].imshow(np.log(frame))
+            divider = make_axes_locatable(axes[k])
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(im_obj, cax=cax)
+
+        axes[0].set_title(r'$\lambda = H2$')
+        axes[1].set_title(r'$\lambda = H1$')
+        fig.text(.38, .85, f'{i}-th frame from the cube', va='center', rotation='horizontal')
+        if save:
+            plt.savefig(f'./figures/cube_gif/{i}.png', format='png',  bbox_inches = "tight")
+        else:
+            plt.show()
+            

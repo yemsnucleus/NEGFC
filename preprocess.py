@@ -23,11 +23,10 @@ from skimage.draw 			 import circle
 
 # Factor with which to multiply Gaussian FWHM to convert it to 1-sigma standard deviation
 from astropy.stats 				 import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm, sigma_clipped_stats
+from plottools 					 import plot_to_compare, plot_cube 
 from astropy.modeling 			 import models, fitting
 from photutils.centroids 		 import centroid_com
-from anotator 					 import AngleAnnotation
 
-COUNT = 0
 def shift_and_crop_cube(cube, n_jobs=1, shift_x=-1, shift_y=-1):
 	"""Shift and crop each frame within a given cube
 
@@ -101,64 +100,6 @@ def fit_and_crop(cube, use_pos=0, n_jobs=1):
 	                                               verbose=False) 
 
 	return cube_center, fwhm_sphere, model_2d
-
-def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savefig_params):
-	""" Plot a list of images and their corresponding titles
-	
-	:param images: A list of 2dim images
-	:type images: list<numpy.ndarray>
-	:param titles: A list of titles
-	:type titles: list<string>
-	:param axes: Matplotlib predefined axes, defaults to None
-	:type axes: matplotlib.axes.Axes, optional
-	:returns: Axes with the image plots
-	:rtype: {matpllotlib.axes.Axes}
-	"""
-	if axes is None:
-		fig, axes = plt.subplots(1, len(images), dpi=300,
-			gridspec_kw={'hspace': 0., 'wspace': .4})
-	for i, (im, ti) in enumerate(zip(images, titles)):
-		im_obj = axes[i].imshow(im)
-		# axes[i].set_ylim(50, 150)
-		# axes[i].set_xlim(50, 150)
-		divider = make_axes_locatable(axes[i])
-		cax = divider.append_axes("right", size="5%", pad=0.05)
-		plt.colorbar(im_obj, cax=cax)
-		axes[i].set_title(ti)
-	if show:
-		plt.show()
-	if img_file:
-		fig.savefig(img_file, **savefig_params)
-
-	return axes 
-
-def plot_cube(cube, save=False):
-	""" Plot each frame from a cube
-	
-	:param cube: A cube containing frames
-	:type cube: numpy.ndarray
-	:param save: Write each frame figure, defaults to False
-	:type save: bool, optional
-	"""
-	for i in range(cube[0].shape[0]):
-		fig, axes = plt.subplots(1, 2, dpi=300,
-		gridspec_kw={'hspace': 0., 'wspace': .4})		
-		for k in range(2):
-			y, x  = frame_center(cube[k][i])
-			frame = get_square(cube[k][i], size=40, y=y, x=x, position=False)
-			im_obj = axes[k].imshow(np.log(frame))
-			divider = make_axes_locatable(axes[k])
-			cax = divider.append_axes("right", size="5%", pad=0.05)
-			plt.colorbar(im_obj, cax=cax)
-
-		axes[0].set_title(r'$\lambda = H2$')
-		axes[1].set_title(r'$\lambda = H1$')
-		fig.text(.38, .85, f'{i}-th frame from the cube', va='center', rotation='horizontal')
-		if save:
-			plt.savefig(f'./figures/cube_gif/{i}.png', format='png',  bbox_inches = "tight")
-		else:
-			plt.show()
-			
 
 def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
 	""" Fit a 2 dimensional gaussian
@@ -291,8 +232,8 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
 	# `matrix.T` has dimension LxD where L is `time steps` and D is `pixels space`
 	# We want to see the max. var or info in the pixels space along the time steps axis
 	# Then when applying SVD,
-	# The columns of U represent the principal components along the time steps.
-	# The columns of V represent the principal components along the pixel space.
+	# The columns of U represent the principal components in time
+	# The columns of V represent the principal components in feature space.
 	U = U[:, :ncomp].T
 
 	transformed   = np.dot(U, matrix.T)
@@ -308,7 +249,7 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
 	array_der = cube_derotate(residuals, -rot_angles, nproc=n_jobs, 
 							  imlib='vip-fft', interpolation='lanczos4')
 	res_frame = np.nanmedian(array_der, axis=0)
-	if plot or True:
+	if plot:
 		plot_to_compare([matrix[0], reconstructed[0], residuals[0], res_frame], 
 						['Original', 'Reconstructed', 'Residuals', 'median'])
 
@@ -513,12 +454,11 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0,
 
 			radius = np.sqrt(x**2+y**2) # radius
 			angle  = np.arctan2(y, x)   # radians
-			angle  = angle*180/np.pi    # degrees
+			angle  = angle/np.pi*180    # degrees
 			# Since atan2 return angles in between [0, 180] and [-180, 0],
 			# we convert the angle to refers a system of 360 degrees
 			theta0 = np.mod(angle, 360) 
-
-			params = (radius, theta0, table['flux'].values)
+			params = (radius, theta0, row['flux'])
 
 			# sub, _, _ = get_square(current_frame, 
 			# 					   size=50, 
@@ -528,40 +468,16 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0,
 
 			# plot_angles(sub, x,	y, index)
 			
-			# solu = minimize(chisquare_mod, params, 
-			# 				args=(row['x'], row['y'], 
-			# 					  current_frame, 
-			# 					  rot_angles[index], 
-			# 					  pixel_scale, 
-			# 					  psf_norm, 
-			# 					  fwhma, 
-			# 					  'stddev'),
-            #     			method = 'Nelder-Mead')
+			solu = minimize(chisquare_mod, params, 
+							args=(row['x'], row['y'], 
+								  current_frame, 
+								  rot_angles[index], 
+								  pixel_scale, 
+								  psf_norm, 
+								  fwhma, 
+								  'stddev'),
+                			method = 'Nelder-Mead')
 
-def plot_angles(sub, x, y, index=0):
-	fig, ax = plt.subplots(nrows=1, ncols=1)
-	ax.imshow(sub, extent=[-sub.shape[1]/2., 
-							sub.shape[1]/2., 
-							-sub.shape[0]/2., 
-							sub.shape[0]/2. ])
-
-	center = (0., 0.)
-	p1 = [(0., 0.), (x, y)]
-	p2 = [(0., 0.), (0., y)]
-	
-	axis_x = [(0., -1.2*y), (0., 1.2*y)]
-	axis_y = [(-1.2*x, 0.), (1.2*x, 0.)]
-
-	
-	line1, = ax.plot(*zip(*p1))
-	line2, = ax.plot(*zip(*p2))
-	line3, = ax.plot(*zip(*axis_x), color='k')
-	line4, = ax.plot(*zip(*axis_y), color='k')
-	point, = ax.plot(*center, marker="o")
-
-	am1 = AngleAnnotation(center, p1[1], p2[1], ax=ax, size=75, text=r"$\alpha$")
-	# fig.savefig('./figures/negfc/{}.png'.format(index))
-	plt.show()
 
 
 def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang, 
