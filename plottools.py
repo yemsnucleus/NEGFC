@@ -254,3 +254,27 @@ def plot_cube(cube, save=False):
         else:
             plt.show()
             
+
+def plot_optimization(frame, frame_negfc, root='./figures/negfc_opt/'):
+    fig, axes = plt.subplots(1, 3, figsize=(5,5), sharex=True, sharey=True, dpi=300)
+    axes = axes.flatten()
+    axes[0].imshow(frame)
+    axes[0].set_title('Frame')
+    axes[0].set_ylim(50, 150)
+    axes[0].set_xlim(50, 150)
+    axes[1].imshow(frame_negfc)
+    axes[1].set_title('Frame \n+ Fake Companion')
+    axes[1].set_ylim(50, 150)
+    axes[1].set_xlim(50, 150)
+    axes[2].imshow(frame_negfc-frame)
+    axes[2].set_title('Residuals {:.2f}'.format(loss))
+    axes[2].set_ylim(50, 150)
+    axes[2].set_xlim(50, 150)
+
+    files = os.listdir(root)
+    if len(files) == 0:
+      fig.savefig(root+'0.png')
+    else:
+      numbers = [int(file.split('.png')[0]) for file in files]
+      numbers = np.sort(numbers)
+      fig.savefig(root+'{}.png'.format(numbers[-1]+1))

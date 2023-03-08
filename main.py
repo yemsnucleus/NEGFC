@@ -17,8 +17,8 @@ from vip_hci.var.shapes				import get_square
 from vip_hci.fits 					import open_fits
 
 from plottools					import plot_to_compare, plot_cube, plot_detection, plot_angles 
+from detection 					import get_intersting_coords, optimize_params
 from pca 						import reduce_pca
-from detection 					import get_intersting_coords
 
 from astropy.stats				import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 from mpl_toolkits.axes_grid1	import make_axes_locatable
@@ -26,8 +26,6 @@ from joblib						import Parallel, delayed
 from astropy.modeling			import models, fitting
 
 from photutils.centroids		import centroid_com
-from scipy.optimize				import minimize
-from skimage.draw				import disk as circle
 
 
 def shift_and_crop_cube(cube, n_jobs=1, shift_x=-1, shift_y=-1):
@@ -171,7 +169,7 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
 	# Function to distribute (i.e., what it is inside the for loop)
 	def cut_fit_shift(frame, size, fwhm, y, x, plot=False):
 		# Cut the frame en put the center in the (x,y) from the reference frame
-		sub, y1, x1 = get_square(frame, size=size, y=y, x=x, position=True)
+		sub, y1, x1 = get_square(frame, size=size, y=y, x=x, position=True, force=True)
 
 		if plot:
 			# [Only for visualization] Negative gaussian fit
@@ -274,190 +272,14 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	table = table[table['snr'] > snr_thresh]
 
 	# How many FWHM we want to consider to fit the model
-	nfwhm = 3
-	fwhma = int(nfwhm)*float(fwhm_sphere)
-	# Cube to store the final model
-	dim1, dim2, _ = cube[0].shape
-
-	cube_emp= np.zeros((int(dim1), dim2, dim2))
-	f_0_comp, r_0_comp,  theta_0_comp= np.zeros(int(dim1)), np.zeros(int(dim1)), np.zeros(int(dim1))
-
-	x_cube_center, y_cube_center = frame_center(cube[wavelength, 0, ...])
-
-	# Detection from coords NegFC
-	nframes = cube[wavelength].shape[0]
-	if plot:
-		plot_detection(frame, table)
-
-	for _, row in table.iterrows():
-		x 	 = float(row['x']) - x_cube_center
-		y    = float(row['y']) - y_cube_center
-		flux = row['flux']
-		print('[INFO] Optimizing companion located at ({:.2f}, {:.2f}) with flux {:.2f}'.format(x, y, flux))
-		for index in range(nframes): 
-			current_frame = cube[wavelength, index]
-			radius = np.sqrt(x**2+y**2) # radius
-			angle  = np.arctan2(y, x)   # radians
-			angle  = angle/np.pi*180    # degrees
-			# Since atan2 return angles in between [0, 180] and [-180, 0],
-			# we convert the angle to refers a system of 360 degrees
-			theta0 = np.mod(angle, 360) 
-			params = (radius, theta0, flux)
-
-			# plot_angles(current_frame, x,	y, index)
-			
-			solu = minimize(chisquare_mod, params, 
-							args=(row['x'], row['y'], 
-								  current_frame, 
-								  -rot_angles[index], 
-								  pixel_scale, 
-								  psf_norm, 
-								  fwhma, 
-								  'stddev'),
-                			method = 'Nelder-Mead')
-
-			radius, theta0, flux = solu.x
-			f_0_comp[index]=flux
-			r_0_comp[index]=radius
-			theta_0_comp[index]=theta0
-
-			frame_emp = inject_fcs_cube_mod(current_frame, 
-										  	psf_norm, 
-										  	-rot_angles[index], 
-										  	-flux, 
-										  	radius, 
-										  	theta0, 
-										  	n_branches=1)
-			cube_emp[index,:,:]=frame_emp
-
-def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang, pixel, psf_norma, fwhm, fmerit):
-	"""Creates the objetive function to be minimized
-
-	This function calculate residuals (errors) based on first guesses 
-	of the physical parameters of the companion candidate.
-	:param modelParameters: Parameters to be adjusted
-	:type modelParameters: list of scalars
-	:param sourcex: coordinate in axis x
-	:type sourcex: number, float
-	:param sourcey: coordinate in axis y
-	:type sourcey: number, float
-	:param frame: Current 2-dimensional frame from the cube
-	:type frame: numpy.ndarray
-	:param ang: Rotation angle
-	:type ang: number, float
-	:param pixel: Pixel scale
-	:type pixel: number, float
-	:param psf_norma: Normalized PSF
-	:type psf_norma: numpy.ndarray
-	:param fwhm: Full width at Half Maximum to consider during the optimization
-	:type fwhm: number, float
-	:param fmerit: How to calculate residuals. Either taking the 'stddev' or the 'sum'
-	:type fmerit: string
-	:returns: loss to minimize
-	:rtype: {number, float}
-	"""
-	try:
-		r, theta, flux = modelParameters
-	except TypeError:
-		print('paraVector must be a tuple, {} was given'.format(type(modelParameters)))
-
-	frame_negfc = inject_fcs_cube_mod(frame, 
-									  psf_norma, 
-									  ang, 
-									  -flux, 
-									  r, 
-									  theta, 
-									  n_branches=1)
+	optimize_params(table, 
+					cube[wavelength], 
+					psf_norm, 
+					fwhm_sphere, 
+					-rot_angles, 
+					pixel_scale, 
+					nfwhm=3)
 	
-
-	centy_fr, centx_fr = frame_center(frame_negfc)
-
-	posy = r * np.sin(np.deg2rad(theta)-np.deg2rad(ang)) + centy_fr
-	posx = r * np.cos(np.deg2rad(theta)-np.deg2rad(ang)) + centx_fr
-
-	indices = circle((posy, posx), radius=fwhm)
-	yy, xx = indices
-	values = frame_negfc[yy, xx].ravel()    
-
-	# Function of merit
-	if fmerit == 'sum':
-		values = np.abs(values)
-		chi2 = np.sum(values[values > 0])
-		N = len(values[values > 0])
-		loss =  chi2 / (N-3) 
-	if fmerit == 'stddev':
-	    loss = np.std(values[values != 0]) # loss
-	
-	# fig, axes = plt.subplots(1, 3, figsize=(5,5), sharex=True, sharey=True, dpi=300)
-	# axes = axes.flatten()
-	# axes[0].imshow(frame)
-	# axes[0].set_title('Frame')
-	# axes[0].set_ylim(50, 150)
-	# axes[0].set_xlim(50, 150)
-	# axes[1].imshow(frame_negfc)
-	# axes[1].set_title('Frame \n+ Fake Companion')
-	# axes[1].set_ylim(50, 150)
-	# axes[1].set_xlim(50, 150)
-	# axes[2].imshow(frame_negfc-frame)
-	# axes[2].set_title('Residuals {:.2f}'.format(loss))
-	# axes[2].set_ylim(50, 150)
-	# axes[2].set_xlim(50, 150)
-	# root = './figures/negfc_opt/'
-	# files = os.listdir(root)
-	# if len(files) == 0:
-	# 	fig.savefig(root+'0.png')
-	# else:
-	# 	numbers = [int(file.split('.png')[0]) for file in files]
-	# 	numbers = np.sort(numbers)
-	# 	fig.savefig(root+'{}.png'.format(numbers[-1]+1))
-
-	return loss
-
-def inject_fcs_cube_mod(frame, template, angle, flux, radius, theta, n_branches=1, imlib='opencv'):
-	"""Inject a template image into a frame
-	
-	Template usually is a PSF and the frame cames from the cube.
-	:param frame: Frame where we are going to inject the template
-	:type frame: numpy.ndarray
-	:param template: Template or patch to be injected into the frame
-	:type template: numpy.ndarray
-	:param angle: Rotation angle of the frame 
-	:type angle: number, float
-	:param flux: Flux guess of the companion
-	:type flux: number, float
-	:param radius: Distance between the planet and the companion
-	:type radius: number, float
-	:param theta: Angle in degrees between the star and the companion 
-	:type theta: number, float
-	:param n_branches: [description], defaults to 1
-	:type n_branches: number, optional
-	:param imlib: image library to work with, defaults to 'opencv'
-	:type imlib: str, optional
-	:returns: [description]
-	:rtype: {[type]}
-	"""
-	ceny, cenx = frame_center(frame)
-	size_psf = template.shape[0]
-
-	# inyect the PSF template to the center of the image
-	frame_copy = np.zeros_like(frame, dtype=np.float64)
-	w = int(np.floor(size_psf/2.)) # width
-	frame_copy[int(ceny-w):int(ceny+w+1), int(cenx-w):int(cenx+w+1)] = template
-
-	# Here we insert many companions around the center of the image. 
-	# Since we already know an approximated set of coordinates of the companions,
-	# we do not need to inject more than one fake companion around the center of the image. 
-	# That means in we'll only use the theta angle for injecting (i.e., branch = 0)	
-	tmp = np.zeros_like(frame)
-	for branch in range(n_branches):
-		ang = (branch * 2 * np.pi / n_branches) + np.deg2rad(theta)
-		y = radius * np.sin(ang - np.deg2rad(angle))
-		x = radius * np.cos(ang - np.deg2rad(angle))
-		# we shape the normed PSF to the companion flux
-		img_shifted = frame_shift(frame_copy, y, x, imlib=imlib)
-		tmp += img_shifted*flux
-	frame_out = frame + tmp
-	return frame_out   
 
 if __name__ == '__main__':
 

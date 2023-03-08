@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from astropy.stats 					import sigma_clipped_stats
+from astropy.stats 					import sigma_clipped_stats, gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 from astropy.modeling				import models, fitting
 from plottools 						import plot_to_compare
 from skimage.feature				import peak_local_max
@@ -9,7 +9,8 @@ from vip_hci.preproc.recentering 	import frame_center
 from vip_hci.var.shapes				import get_square
 from scipy.ndimage.filters 			import correlate
 from vip_hci.metrics.snr_source		import snr
-from astropy.stats				import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
+from loss	 						import chisquare_mod
+from scipy.optimize					import minimize
 
 def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	"""Get coordinates of potential companions
@@ -35,14 +36,6 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	#Calculate sigma-clipped statistics on the provided data.
 	_, median, stddev = sigma_clipped_stats(frame, sigma=bkg_sigma, maxiters=None)
 	bkg_level = median + (stddev * bkg_sigma)
-	threshold = bkg_level
-
-	frame_det = correlate(frame, psf_norm)
-
-	# returns the coordinates of local peaks (maxima) in an image.
-	coords_temp = peak_local_max(frame_det, threshold_abs=bkg_level,
-								 min_distance=int(np.ceil(fwhm)),
-								 num_peaks=20)
 
 	# Padding the image with zeros to avoid errors at the edges
 	pad_value = 10
@@ -50,7 +43,12 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	if plot:
 		plot_to_compare([frame, array_padded], ['Original', 'Padded'])
 
-	# ===================================================================================
+	# returns the coordinates of local peaks (maxima) in an image.
+	coords_temp = peak_local_max(frame, threshold_abs=bkg_level,
+								 min_distance=int(np.ceil(fwhm)),
+								 num_peaks=20)
+
+	# CHECK BLOBS =============================================================
 	y_temp = coords_temp[:, 0]
 	x_temp = coords_temp[:, 1]
 	coords, fluxes, fwhm_mean = [], [], []
@@ -109,3 +107,60 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 											 	fwhm, False, verbose=False), axis=1)
 
 	return table
+
+def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, plot=False):
+	
+	fwhma = int(nfwhm)*float(fwhm)
+	
+	n_frames, height, width = cube.shape
+	# Cube to store the final model
+	cube_emp= np.zeros_like(cube)
+	f_0_comp, r_0_comp,  theta_0_comp= np.zeros(int(n_frames)), \
+									   np.zeros(int(n_frames)), \
+									   np.zeros(int(n_frames))
+	
+	x_cube_center, y_cube_center = frame_center(cube[0])
+
+	if plot:
+		plot_detection(frame, table)
+
+	print(':'*100)
+	for _, row in table.iterrows():
+		x 	 = float(row['x']) - x_cube_center
+		y    = float(row['y']) - y_cube_center
+		flux = row['flux']
+		print('[INFO] Optimizing companion located at ({:.2f}, {:.2f}) with flux {:.2f}'.format(x, y, flux))
+		for index in range(n_frames): 
+			current_frame = cube[index]
+
+			radius = np.sqrt(x**2+y**2) # radius
+			angle  = np.arctan2(y, x)   # radians
+			angle  = angle/np.pi*180    # degrees
+			# Since atan2 return angles in between [0, 180] and [-180, 0],
+			# we convert the angle to refers a system of 360 degrees
+			theta0 = np.mod(angle, 360) 
+			params = (radius, theta0, flux)
+
+			solu = minimize(chisquare_mod, params, 
+				args=(row['x'], row['y'], 
+					  current_frame, 
+					  -rot_angles[index], 
+					  pixel_scale, 
+					  psf, 
+					  fwhma, 
+					  'stddev'),
+    			method = 'Nelder-Mead')
+
+			# radius, theta0, flux = solu.x
+			# f_0_comp[index]=flux
+			# r_0_comp[index]=radius
+			# theta_0_comp[index]=theta0
+
+			# frame_emp = inject_fcs_cube_mod(current_frame, 
+			# 							  	psf_norm, 
+			# 							  	-rot_angles[index], 
+			# 							  	-flux, 
+			# 							  	radius, 
+			# 							  	theta0, 
+			# 							  	n_branches=1)
+			# cube_emp[index,:,:]=frame_emp
