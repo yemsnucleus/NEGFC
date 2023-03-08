@@ -1,3 +1,6 @@
+# =============================
+# By YEMS EXO-MOONS GROUP 2023
+# =============================
 import matplotlib.pyplot as plt
 import pickle as pkl
 import numpy as np
@@ -5,27 +8,27 @@ import pandas as pd
 import os
 import math
 
-from joblib import Parallel, delayed
-from vip_hci.preproc.recentering import frame_shift, frame_center, cube_recenter_2dfit
-from vip_hci.preproc.derotation  import frame_rotate, cube_derotate
-from vip_hci.var.shapes			 import get_square, prepare_matrix
-from vip_hci.preproc.cosmetics 	 import cube_crop_frames
-from vip_hci.preproc.parangles   import check_pa_vector
-from vip_hci.var 				 import fit_2dgaussian
-from vip_hci.fm 				 import normalize_psf
-from vip_hci.fits 				 import open_fits
-from vip_hci.metrics.snr_source  import snr
+from vip_hci.preproc.recentering 	import frame_shift, frame_center, cube_recenter_2dfit
+from vip_hci.preproc.derotation  	import frame_rotate
+from vip_hci.preproc.cosmetics 	 	import cube_crop_frames
+from vip_hci.var 				 	import fit_2dgaussian
+from vip_hci.fm 				 	import normalize_psf
+from vip_hci.var.shapes				import get_square
+from vip_hci.fits 					import open_fits
 
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from skimage.feature 		 import peak_local_max
-from scipy.optimize 		 import minimize
-from skimage.draw 			 import circle
+from plottools					import plot_to_compare, plot_cube, plot_detection, plot_angles 
+from pca 						import reduce_pca
+from detection 					import get_intersting_coords
 
-# Factor with which to multiply Gaussian FWHM to convert it to 1-sigma standard deviation
-from astropy.stats 				 import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm, sigma_clipped_stats
-from plottools 					 import plot_to_compare, plot_cube 
-from astropy.modeling 			 import models, fitting
-from photutils.centroids 		 import centroid_com
+from astropy.stats				import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
+from mpl_toolkits.axes_grid1	import make_axes_locatable
+from joblib						import Parallel, delayed
+from astropy.modeling			import models, fitting
+
+from photutils.centroids		import centroid_com
+from scipy.optimize				import minimize
+from skimage.draw				import disk as circle
+
 
 def shift_and_crop_cube(cube, n_jobs=1, shift_x=-1, shift_y=-1):
 	"""Shift and crop each frame within a given cube
@@ -60,7 +63,6 @@ def shift_and_crop_cube(cube, n_jobs=1, shift_x=-1, shift_y=-1):
 	                                force=True) 
 	return shifted_cube
 	
-
 def fit_and_crop(cube, use_pos=0, n_jobs=1):
 	"""Fit a Gaussian and crop an frame-based cube.
 	
@@ -201,161 +203,7 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
 
 	return shifted_cube
 
-def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
-	""" Reduce cube using Angular Differential Imaging (ADI) techinique. 
-	
-	This function reduce the frame-axis dimension of the cube to 1
-	We subtract the principal components to each original frame (residuals).
-	Using the rotation angles we center all the frames and reduce them to the median. 
-	If more than one channels were provided, we calculate the mean of the medians per wavelength.
-	:param cube: A cube containing frames
-	:type cube: numpy.ndarray
-	:param rot_angles: Rotation angles used to center residual frames
-	:type rot_angles: numpy.ndarray
-	:param ncomp: Number of component to reduce in the frames axis, defaults to 1
-	:type ncomp: number, optional
-	:param fwhm_sphere: Full-Width at Half Maximum value to initialice the gaussian model, defaults to 4
-	:type fwhm_sphere: number, optional
-	:param plot: If true, displays original frame vs reconstruction, defaults to False
-	:type plot: bool, optional
-	:returns: Median of centered residuals
-	:rtype: {np.ndarray}
-	"""
-	nz, ny, nx = cube.shape
-	rot_angles = check_pa_vector(rot_angles)
-
-	# Build the matrix for the SVD/PCA and other matrix decompositions. (flatten the cube)
-	matrix = prepare_matrix(cube, mode='fullfr', verbose=False)
-
-	# DO SVD on the matrix values
-	U, S, V = np.linalg.svd(matrix.T, full_matrices=False)
-	# `matrix.T` has dimension LxD where L is `time steps` and D is `pixels space`
-	# We want to see the max. var or info in the pixels space along the time steps axis
-	# Then when applying SVD,
-	# The columns of U represent the principal components in time
-	# The columns of V represent the principal components in feature space.
-	U = U[:, :ncomp].T
-
-	transformed   = np.dot(U, matrix.T)
-	reconstructed = np.dot(transformed.T, U)
-	residuals     = matrix - reconstructed
-
-	residuals 	  = residuals.reshape(residuals.shape[0], ny, nx)
-	reconstructed = reconstructed.reshape(reconstructed.shape[0], ny, nx)
-	matrix 		  = matrix.reshape(matrix.shape[0], ny, nx)
-	p_components  = U.reshape(U.shape[0], ny, nx)
-
-	# NOT SURE WHY rot_angles IS NEGATIVE
-	array_der = cube_derotate(residuals, -rot_angles, nproc=n_jobs, 
-							  imlib='vip-fft', interpolation='lanczos4')
-	res_frame = np.nanmedian(array_der, axis=0)
-	if plot:
-		plot_to_compare([matrix[0], reconstructed[0], residuals[0], res_frame], 
-						['Original', 'Reconstructed', 'Residuals', 'median'])
-
-	return res_frame
-
-def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
-	"""Get coordinates of potential companions
-	
-	This method infer the background noise and find coordinates that contains most luminous 
-	sources. After getting coordinates, it filter them by:
-		1. checking that the amplitude is positive > 0
-		2. checking whether the x and y centroids of the 2d gaussian fit
-		   coincide with the center of the subimage (within 2px error)
-		3. checking whether the mean of the fwhm in y and x of the fit are close to 
-		   the FWHM_PSF with a margin of 3px
-	:param frame: Reduced 2-dim image after applying reduce_pca
-	:type frame: np.ndarray
-	:param fwhm: full-width at half maximum comming from the normalized PSF, defaults to 4
-	:type fwhm: number, optional
-	:param bkg_sigma: The number of standard deviations to use for both the lower and upper clipping limit, defaults to 5
-	:type bkg_sigma: number, optional
-	:param plot: If true, displays original frame vs reconstruction, defaults to False
-	:type plot: bool, optional
-	:returns: A set of coordinates of potential companions and their associated fluxes
-	:rtype: {List of pairs, List of pairs}
-	"""
-	#Calculate sigma-clipped statistics on the provided data.
-	_, median, stddev = sigma_clipped_stats(frame, sigma=bkg_sigma, maxiters=None)
-	bkg_level = median + (stddev * bkg_sigma)
-	threshold = bkg_level
-
-	from scipy.ndimage.filters import correlate
-	frame_det = correlate(frame, psf_norm)
-
-	# returns the coordinates of local peaks (maxima) in an image.
-	coords_temp = peak_local_max(frame_det, threshold_abs=bkg_level,
-								 min_distance=int(np.ceil(fwhm)),
-								 num_peaks=20)
-
-	# Padding the image with zeros to avoid errors at the edges
-	pad_value = 10
-	array_padded = np.pad(frame, pad_width=pad_value, mode='constant', constant_values=0)
-	if plot:
-		plot_to_compare([frame, array_padded], ['Original', 'Padded'])
-
-	# ===================================================================================
-	y_temp = coords_temp[:, 0]
-	x_temp = coords_temp[:, 1]
-	coords, fluxes, fwhm_mean = [], [], []
-
-	# Fitting a 2d gaussian to each local maxima position
-	for y, x in zip(y_temp, x_temp):
-		subsi = 3 * int(np.ceil(fwhm)) # Zone to fit the gaussian
-		if subsi % 2 == 0:
-		    subsi += 1
-
-		scy = y + pad_value
-		scx = x + pad_value
-
-		subim, suby, subx = get_square(array_padded, 
-									   subsi, scy, scx,
-									   position=True, force=True,
-									   verbose=False)
-		cy, cx = frame_center(subim)
-		gauss = models.Gaussian2D(amplitude=subim.max(), x_mean=cx,
-								  y_mean=cy, theta=0,
-								  x_stddev=fwhm*gaussian_fwhm_to_sigma,
-							      y_stddev=fwhm*gaussian_fwhm_to_sigma)
-
-		sy, sx = np.indices(subim.shape)
-		fitter = fitting.LevMarLSQFitter()
-		fit = fitter(gauss, sx, sy, subim)
-		
-		if plot:
-			y, x = np.indices(subim.shape)	
-			plot_to_compare([subim, fit(x, y)], ['subimage', 'gaussian'])
-
-		fwhm_y = fit.y_stddev.value * gaussian_sigma_to_fwhm
-		fwhm_x = fit.x_stddev.value * gaussian_sigma_to_fwhm
-		mean_fwhm_fit = np.mean([np.abs(fwhm_x), np.abs(fwhm_y)])
-		# Filtering Process
-		condyf = np.allclose(fit.y_mean.value, cy, atol=2)
-		condxf = np.allclose(fit.x_mean.value, cx, atol=2)
-		condmf = np.allclose(mean_fwhm_fit, fwhm, atol=3)
-		if fit.amplitude.value > 0 and condxf and condyf and condmf:
-			coords.append((suby + fit.y_mean.value,
-						   subx + fit.x_mean.value))
-			fluxes.append(fit.amplitude.value)
-			fwhm_mean.append(mean_fwhm_fit)
-
-	coords = np.array(coords)
-	yy = coords[:, 0] - pad_value
-	xx = coords[:, 1] - pad_value
-	
-	table = pd.DataFrame()
-	table['x']    = xx
-	table['y']    = yy
-	table['flux'] = fluxes
-	table['fwhm_mean'] = fwhm_mean
-	table['snr']  = table.apply(lambda col: snr(frame, 
-											 	(col['x'], col['y']), 
-											 	fwhm, False, verbose=False), axis=1)
-
-	return table
-def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, 
-				pixel_scale=0.01225, n_jobs=1, plot=False):
+def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1, plot=False):
 	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
 	
 	:param cube_path: Path to the cube image
@@ -429,59 +277,60 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0,
 	nfwhm = 3
 	fwhma = int(nfwhm)*float(fwhm_sphere)
 	# Cube to store the final model
-	cube_emp = np.zeros(cube[0].shape)
+	dim1, dim2, _ = cube[0].shape
+
+	cube_emp= np.zeros((int(dim1), dim2, dim2))
+	f_0_comp, r_0_comp,  theta_0_comp= np.zeros(int(dim1)), np.zeros(int(dim1)), np.zeros(int(dim1))
+
 	x_cube_center, y_cube_center = frame_center(cube[wavelength, 0, ...])
 
 	# Detection from coords NegFC
 	nframes = cube[wavelength].shape[0]
+	if plot:
+		plot_detection(frame, table)
+
 	for _, row in table.iterrows():
-
-		# fig, ax = plt.subplots(figsize=(5,5), dpi=200)
-		# ax.imshow(frame)
-		# for _, row in table.iterrows():
-		# 	circle = plt.Circle((row['x'], row['y']), row['fwhm_mean'], fill=False, edgecolor='r')	
-		# 	ax.add_patch(circle)
-		# 	ax.set_xlim(50, 150)
-		# 	ax.set_ylim(50, 150)
-		# plt.show()
-		# return
-
+		x 	 = float(row['x']) - x_cube_center
+		y    = float(row['y']) - y_cube_center
+		flux = row['flux']
+		print('[INFO] Optimizing companion located at ({:.2f}, {:.2f}) with flux {:.2f}'.format(x, y, flux))
 		for index in range(nframes): 
-			x=float(row['x']) - x_cube_center
-			y=float(row['y']) - y_cube_center
-
 			current_frame = cube[wavelength, index]
-
 			radius = np.sqrt(x**2+y**2) # radius
 			angle  = np.arctan2(y, x)   # radians
 			angle  = angle/np.pi*180    # degrees
 			# Since atan2 return angles in between [0, 180] and [-180, 0],
 			# we convert the angle to refers a system of 360 degrees
 			theta0 = np.mod(angle, 360) 
-			params = (radius, theta0, row['flux'])
+			params = (radius, theta0, flux)
 
-			# sub, _, _ = get_square(current_frame, 
-			# 					   size=50, 
-			# 					   y=y_cube_center, 
-			# 					   x=x_cube_center, 
-			# 					   position=True)
-
-			# plot_angles(sub, x,	y, index)
+			# plot_angles(current_frame, x,	y, index)
 			
 			solu = minimize(chisquare_mod, params, 
 							args=(row['x'], row['y'], 
 								  current_frame, 
-								  rot_angles[index], 
+								  -rot_angles[index], 
 								  pixel_scale, 
 								  psf_norm, 
 								  fwhma, 
 								  'stddev'),
                 			method = 'Nelder-Mead')
 
+			radius, theta0, flux = solu.x
+			f_0_comp[index]=flux
+			r_0_comp[index]=radius
+			theta_0_comp[index]=theta0
 
+			frame_emp = inject_fcs_cube_mod(current_frame, 
+										  	psf_norm, 
+										  	-rot_angles[index], 
+										  	-flux, 
+										  	radius, 
+										  	theta0, 
+										  	n_branches=1)
+			cube_emp[index,:,:]=frame_emp
 
-def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang, 
-				   pixel, psf_norma, fwhm, fmerit):
+def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang, pixel, psf_norma, fwhm, fmerit):
 	"""Creates the objetive function to be minimized
 
 	This function calculate residuals (errors) based on first guesses 
@@ -526,7 +375,7 @@ def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang,
 	posy = r * np.sin(np.deg2rad(theta)-np.deg2rad(ang)) + centy_fr
 	posx = r * np.cos(np.deg2rad(theta)-np.deg2rad(ang)) + centx_fr
 
-	indices = circle(posy, posx, radius=fwhm)
+	indices = circle((posy, posx), radius=fwhm)
 	yy, xx = indices
 	values = frame_negfc[yy, xx].ravel()    
 
@@ -539,34 +388,32 @@ def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang,
 	if fmerit == 'stddev':
 	    loss = np.std(values[values != 0]) # loss
 	
-	fig, axes = plt.subplots(1, 3, figsize=(5,5), sharex=True, sharey=True, dpi=300)
-	axes = axes.flatten()
-	axes[0].imshow(frame)
-	axes[0].set_title('Frame')
-	axes[0].set_ylim(50, 150)
-	axes[0].set_xlim(50, 150)
-	axes[1].imshow(frame_negfc)
-	axes[1].set_title('Frame \n+ Fake Companion')
-	axes[1].set_ylim(50, 150)
-	axes[1].set_xlim(50, 150)
-	axes[2].imshow(frame_negfc-frame)
-	axes[2].set_title('Residuals {:.2f}'.format(loss))
-	axes[2].set_ylim(50, 150)
-	axes[2].set_xlim(50, 150)
-	root = './figures/negfc_opt/'
-	files = os.listdir(root)
-	if len(files) == 0:
-		fig.savefig(root+'0.png')
-	else:
-		numbers = [int(file.split('.png')[0]) for file in files]
-		numbers = np.sort(numbers)
-		fig.savefig(root+'{}.png'.format(numbers[-1]+1))
+	# fig, axes = plt.subplots(1, 3, figsize=(5,5), sharex=True, sharey=True, dpi=300)
+	# axes = axes.flatten()
+	# axes[0].imshow(frame)
+	# axes[0].set_title('Frame')
+	# axes[0].set_ylim(50, 150)
+	# axes[0].set_xlim(50, 150)
+	# axes[1].imshow(frame_negfc)
+	# axes[1].set_title('Frame \n+ Fake Companion')
+	# axes[1].set_ylim(50, 150)
+	# axes[1].set_xlim(50, 150)
+	# axes[2].imshow(frame_negfc-frame)
+	# axes[2].set_title('Residuals {:.2f}'.format(loss))
+	# axes[2].set_ylim(50, 150)
+	# axes[2].set_xlim(50, 150)
+	# root = './figures/negfc_opt/'
+	# files = os.listdir(root)
+	# if len(files) == 0:
+	# 	fig.savefig(root+'0.png')
+	# else:
+	# 	numbers = [int(file.split('.png')[0]) for file in files]
+	# 	numbers = np.sort(numbers)
+	# 	fig.savefig(root+'{}.png'.format(numbers[-1]+1))
 
 	return loss
 
-
-def inject_fcs_cube_mod(frame, template, angle, flux, radius, 
-                    	theta, n_branches=1, imlib='opencv'):
+def inject_fcs_cube_mod(frame, template, angle, flux, radius, theta, n_branches=1, imlib='opencv'):
 	"""Inject a template image into a frame
 	
 	Template usually is a PSF and the frame cames from the cube.

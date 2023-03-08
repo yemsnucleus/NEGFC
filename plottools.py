@@ -205,6 +205,28 @@ def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savef
 
     return axes 
 
+def plot_detection(frame, table, bounded=True):
+    ''' Plot a detection in a given frame
+    
+    By using a set of coordinates, this function draw a circle with center row[x], row[y]
+    and radius == FWHM.
+    :param frame: An 2-dimensional image from the cube=
+    :type frame: np.ndarray
+    :param table: Table containing candidate detections (needs `get_intersting_coords`)
+    :type table: pandas.DataFrame
+    :param bounded: If a zoom to the center is applied, defaults to True
+    :type bounded: bool, optional
+    '''
+    fig, ax = plt.subplots(figsize=(5,5), dpi=200)
+    ax.imshow(frame)
+    for _, row in table.iterrows():
+        circle = plt.Circle((row['x'], row['y']), row['fwhm_mean'], fill=False, edgecolor='r')  
+        ax.add_patch(circle)
+        if bounded:
+            ax.set_xlim(50, 150)
+            ax.set_ylim(50, 150)
+    plt.show()
+
 def plot_cube(cube, save=False):
     """ Plot each frame from a cube
     
