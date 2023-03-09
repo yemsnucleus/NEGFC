@@ -7,7 +7,7 @@ from vip_hci.preproc.derotation import cube_derotate
 from plottools 					import plot_to_compare
 
 
-def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
+def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False, n_jobs=1):
 	""" Reduce cube using Angular Differential Imaging (ADI) techinique. 
 	
 	This function reduce the frame-axis dimension of the cube to 1
@@ -24,6 +24,8 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
 	:type fwhm_sphere: number, optional
 	:param plot: If true, displays original frame vs reconstruction, defaults to False
 	:type plot: bool, optional
+	:param return_cube: If return residual cube without collapsing frames, default to False
+	:type return_cube: bool, optional
 	:returns: Median of centered residuals
 	:rtype: {np.ndarray}
 	"""
@@ -59,4 +61,6 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, n_jobs=1):
 		plot_to_compare([matrix[0], reconstructed[0], residuals[0], res_frame], 
 						['Original', 'Reconstructed', 'Residuals', 'median'])
 
+	if return_cube:
+		return res_frame, residuals
 	return res_frame

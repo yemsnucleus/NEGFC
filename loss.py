@@ -1,19 +1,16 @@
 import numpy as np
 
+from plottools 						import plot_optimization, plot_mask
 from vip_hci.preproc.recentering	import frame_shift, frame_center
 from skimage.draw					import disk
 
-def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang, pixel, psf_norma, fwhm, fmerit):
+def chisquare_mod(modelParameters, frame, ang, pixel, psf_norma, fwhm, fmerit):
 	"""Creates the objetive function to be minimized
 
 	This function calculate residuals (errors) based on first guesses 
 	of the physical parameters of the companion candidate.
 	:param modelParameters: Parameters to be adjusted
 	:type modelParameters: list of scalars
-	:param sourcex: coordinate in axis x
-	:type sourcex: number, float
-	:param sourcey: coordinate in axis y
-	:type sourcey: number, float
 	:param frame: Current 2-dimensional frame from the cube
 	:type frame: numpy.ndarray
 	:param ang: Rotation angle
@@ -51,6 +48,8 @@ def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang, pixel, psf_norm
 	indices = disk((posy, posx), radius=fwhm)
 	yy, xx = indices
 	values = frame_negfc[yy, xx].ravel()    
+	
+	# plot_mask(frame_negfc, posx, posy, fwhm)
 
 	# Function of merit
 	if fmerit == 'sum':
@@ -60,7 +59,10 @@ def chisquare_mod(modelParameters, sourcex, sourcey, frame, ang, pixel, psf_norm
 		loss =  chi2 / (N-3) 
 	if fmerit == 'stddev':
 	    loss = np.std(values[values != 0]) # loss
-	
+
+	# plot_optimization(frame, frame_negfc, 
+	# 				  msg='Residuals {:.2f}'.format(loss), 
+	# 				  root='./figures/negfc_opt/')
 	return loss
 
 def inject_fcs_cube_mod(frame, template, angle, flux, radius, theta, n_branches=1, imlib='opencv'):
@@ -105,6 +107,8 @@ def inject_fcs_cube_mod(frame, template, angle, flux, radius, theta, n_branches=
 		x = radius * np.cos(ang - np.deg2rad(angle))
 		# we shape the normed PSF to the companion flux
 		img_shifted = frame_shift(frame_copy, y, x, imlib=imlib)
+		import matplotlib.pyplot as plt
 		tmp += img_shifted*flux
 	frame_out = frame + tmp
+
 	return frame_out   

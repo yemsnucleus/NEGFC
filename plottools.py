@@ -1,7 +1,12 @@
-import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Arc
-from matplotlib.transforms import IdentityTransform, TransformedBbox, Bbox
+import numpy as np
+import os
+
+from matplotlib.transforms          import IdentityTransform, TransformedBbox, Bbox
+from mpl_toolkits.axes_grid1        import make_axes_locatable
+from vip_hci.preproc.recentering    import frame_center
+from vip_hci.var.shapes             import get_square
+from matplotlib.patches             import Arc
 
 
 class AngleAnnotation(Arc):
@@ -227,7 +232,7 @@ def plot_detection(frame, table, bounded=True):
             ax.set_ylim(50, 150)
     plt.show()
 
-def plot_cube(cube, save=False):
+def plot_cube(cube, save=False, root='./figures/cube_gif'):
     """ Plot each frame from a cube
     
     :param cube: A cube containing frames
@@ -235,41 +240,38 @@ def plot_cube(cube, save=False):
     :param save: Write each frame figure, defaults to False
     :type save: bool, optional
     """
-    for i in range(cube[0].shape[0]):
-        fig, axes = plt.subplots(1, 2, dpi=300,
-        gridspec_kw={'hspace': 0., 'wspace': .4})       
-        for k in range(2):
-            y, x  = frame_center(cube[k][i])
-            frame = get_square(cube[k][i], size=40, y=y, x=x, position=False)
-            im_obj = axes[k].imshow(np.log(frame))
-            divider = make_axes_locatable(axes[k])
-            cax = divider.append_axes("right", size="5%", pad=0.05)
-            plt.colorbar(im_obj, cax=cax)
-
-        axes[0].set_title(r'$\lambda = H2$')
-        axes[1].set_title(r'$\lambda = H1$')
+    os.makedirs(root, exist_ok=True)
+    for i in range(cube.shape[0]):
+        fig, axes = plt.subplots(1, 1, dpi=300, gridspec_kw={'hspace': 0., 'wspace': .4})       
+        # y, x  = frame_center(cube[i])
+        # frame = get_square(cube[i], size=40, y=y, x=x, position=False)
+        im_obj = axes.imshow(cube[i])
+        divider = make_axes_locatable(axes)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(im_obj, cax=cax)
+        axes.set_title(r'$\lambda = H2$')
         fig.text(.38, .85, f'{i}-th frame from the cube', va='center', rotation='horizontal')
         if save:
-            plt.savefig(f'./figures/cube_gif/{i}.png', format='png',  bbox_inches = "tight")
+            plt.savefig(f'{root}/{i}.png', format='png',  bbox_inches = "tight")
         else:
             plt.show()
             
 
-def plot_optimization(frame, frame_negfc, root='./figures/negfc_opt/'):
+def plot_optimization(frame, frame_negfc, msg='', root='./figures/negfc_opt/'):
     fig, axes = plt.subplots(1, 3, figsize=(5,5), sharex=True, sharey=True, dpi=300)
     axes = axes.flatten()
     axes[0].imshow(frame)
     axes[0].set_title('Frame')
-    axes[0].set_ylim(50, 150)
-    axes[0].set_xlim(50, 150)
+    # axes[0].set_ylim(50, 150)
+    # axes[0].set_xlim(50, 150)
     axes[1].imshow(frame_negfc)
-    axes[1].set_title('Frame \n+ Fake Companion')
-    axes[1].set_ylim(50, 150)
-    axes[1].set_xlim(50, 150)
+    axes[1].set_title('Frame + FC')
+    # axes[1].set_ylim(50, 150)
+    # axes[1].set_xlim(50, 150)
     axes[2].imshow(frame_negfc-frame)
-    axes[2].set_title('Residuals {:.2f}'.format(loss))
-    axes[2].set_ylim(50, 150)
-    axes[2].set_xlim(50, 150)
+    axes[2].set_title(msg)
+    # axes[2].set_ylim(50, 150)
+    # axes[2].set_xlim(50, 150)
 
     files = os.listdir(root)
     if len(files) == 0:
@@ -278,3 +280,34 @@ def plot_optimization(frame, frame_negfc, root='./figures/negfc_opt/'):
       numbers = [int(file.split('.png')[0]) for file in files]
       numbers = np.sort(numbers)
       fig.savefig(root+'{}.png'.format(numbers[-1]+1))
+
+def create_circular_mask(h, w, center=None, radius=None):
+    if center is None: # use the middle of the image
+        center = (int(w/2), int(h/2))
+    if radius is None: # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w-center[0], h-center[1])
+
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0])**2 + (Y-center[1])**2)
+
+    mask = dist_from_center <= radius
+    return mask
+
+def plot_mask(frame, posx, posy, fwhm):
+    plt.figure(figsize=(5,5), dpi=300)
+    h, w = frame.shape
+    mask = create_circular_mask(h, w, center=(posx, posy), radius=fwhm)
+    masked_frame = frame*mask
+    plt.imshow(masked_frame)
+    plt.scatter(posx, posy, marker='x', s=10, color='yellow')
+    plt.plot([posx+fwhm, posx-fwhm], [posy, posy], linestyle='--', color='blue', linewidth=0.5)
+
+    plt.show()
+
+def plot_region(frame, posx, posy, xx=None, yy=None):
+    plt.figure(figsize=(5,5), dpi=300)
+    plt.imshow(frame)
+    plt.scatter(posx, posy, marker='x', color='red')
+    if xx is not None and yy is not None:
+        plt.scatter(xx, yy, marker='x', color='yellow', s=0.1, alpha=0.5)
+    plt.show()

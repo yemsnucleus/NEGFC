@@ -2,15 +2,16 @@ import pandas as pd
 import numpy as np
 
 from astropy.stats 					import sigma_clipped_stats, gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
-from astropy.modeling				import models, fitting
+from loss	 						import chisquare_mod, inject_fcs_cube_mod
 from plottools 						import plot_to_compare
+from astropy.modeling				import models, fitting
 from skimage.feature				import peak_local_max
 from vip_hci.preproc.recentering 	import frame_center
 from vip_hci.var.shapes				import get_square
 from scipy.ndimage.filters 			import correlate
-from vip_hci.metrics.snr_source		import snr
-from loss	 						import chisquare_mod
 from scipy.optimize					import minimize
+from vip_hci.metrics.snr_source		import snr
+from tqdm 							import tqdm
 
 def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	"""Get coordinates of potential companions
@@ -108,7 +109,7 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 
 	return table
 
-def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, plot=False):
+def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, plot=False, method='stddev'):
 	
 	fwhma = int(nfwhm)*float(fwhm)
 	
@@ -130,7 +131,9 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 		y    = float(row['y']) - y_cube_center
 		flux = row['flux']
 		print('[INFO] Optimizing companion located at ({:.2f}, {:.2f}) with flux {:.2f}'.format(x, y, flux))
-		for index in range(n_frames): 
+		pbar = tqdm(range(n_frames), total=n_frames)
+		for index in pbar: 
+			pbar.set_description("Processing frame {}".format(index))
 			current_frame = cube[index]
 
 			radius = np.sqrt(x**2+y**2) # radius
@@ -141,26 +144,27 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 			theta0 = np.mod(angle, 360) 
 			params = (radius, theta0, flux)
 
-			solu = minimize(chisquare_mod, params, 
-				args=(row['x'], row['y'], 
-					  current_frame, 
-					  -rot_angles[index], 
-					  pixel_scale, 
-					  psf, 
-					  fwhma, 
-					  'stddev'),
-    			method = 'Nelder-Mead')
+			solu = minimize(chisquare_mod, 
+							params, 
+							args=(current_frame, 
+								  -rot_angles[index], 
+								  pixel_scale, 
+								  psf, 
+								  fwhma, 
+								  method),
+			    			method = 'Nelder-Mead')
 
-			# radius, theta0, flux = solu.x
-			# f_0_comp[index]=flux
-			# r_0_comp[index]=radius
-			# theta_0_comp[index]=theta0
+			radius, theta0, flux = solu.x
+			f_0_comp[index]=flux
+			r_0_comp[index]=radius
+			theta_0_comp[index]=theta0
 
-			# frame_emp = inject_fcs_cube_mod(current_frame, 
-			# 							  	psf_norm, 
-			# 							  	-rot_angles[index], 
-			# 							  	-flux, 
-			# 							  	radius, 
-			# 							  	theta0, 
-			# 							  	n_branches=1)
-			# cube_emp[index,:,:]=frame_emp
+			frame_emp = inject_fcs_cube_mod(current_frame, 
+										  	psf, 
+										  	-rot_angles[index], 
+										  	-flux, 
+										  	radius, 
+										  	theta0, 
+										  	n_branches=1)
+			cube_emp[index,:,:]=frame_emp
+	return cube_emp

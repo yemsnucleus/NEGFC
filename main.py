@@ -21,10 +21,9 @@ from detection 					import get_intersting_coords, optimize_params
 from pca 						import reduce_pca
 
 from astropy.stats				import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
-from mpl_toolkits.axes_grid1	import make_axes_locatable
+
 from joblib						import Parallel, delayed
 from astropy.modeling			import models, fitting
-
 from photutils.centroids		import centroid_com
 
 
@@ -263,7 +262,7 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 		plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
 
 	# ======== MOON DETECTION =========
-	frame = reduce_pca(cube[wavelength], rot_angles, ncomp=1, fwhm=4, plot=plot, n_jobs=n_jobs)
+	frame, res_cube = reduce_pca(cube[wavelength], rot_angles, ncomp=1, fwhm=4, plot=plot, return_cube=True, n_jobs=n_jobs)
 	# Blob can be defined as a region of an image in which some properties are constant or 
 	# vary within a prescribed range of values.
 	table = get_intersting_coords(frame, psf_norm, fwhm=fwhm, bkg_sigma=5, plot=plot)
@@ -272,15 +271,16 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	table = table[table['snr'] > snr_thresh]
 
 	# How many FWHM we want to consider to fit the model
-	optimize_params(table, 
-					cube[wavelength], 
-					psf_norm, 
-					fwhm_sphere, 
-					-rot_angles, 
-					pixel_scale, 
-					nfwhm=3)
-	
+	cube_final = optimize_params(table, 
+								 res_cube, 
+								 psf_norm, 
+								 fwhm_sphere, 
+								 -rot_angles, 
+								 pixel_scale, 
+								 nfwhm=1,
+								 method='stddev')
 
+	# plot_cube(cube_final, save=True, root='./figures/cube_final')
 if __name__ == '__main__':
 
 	# # Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
