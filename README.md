@@ -26,6 +26,13 @@ The following packages were used to create and test the pipeline. It is highly r
 - `astropy`
 - `skimage`
 - `scipy==1.10`
+- `matplotlib`
+
+## Running the script
+To run the script with default parameters:
+```
+python main.py
+```
 
 ## Directory tree 
 ```
