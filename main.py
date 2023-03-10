@@ -282,13 +282,6 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 
 	# plot_cube(cube_final, save=True, root='./figures/cube_final')
 if __name__ == '__main__':
-
-	# # Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
-	# # It also allows to crop the array and center the PSF at the center of the array(s).
-	# # QUESTIONS:
-	# # 1) Can I normalice both PSFs using the same fitted model? is it worth?
-	# # 2) Can I get FWHM directly from the pixel distribution WITHOUT FITTING A GAUSSIAN?
-
 	cube_path    = './data/HCI/center_im.fits'
 	psf_path     = './data/HCI/median_unsat.fits' # Why this name?
 	rot_ang_path = './data/HCI/rotnth.fits'
