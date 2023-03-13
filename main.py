@@ -3,10 +3,11 @@
 # =============================
 import matplotlib.pyplot as plt
 import pickle as pkl
-import numpy as np
 import pandas as pd
-import os
+import numpy as np
+import argparse
 import math
+import os
 
 from vip_hci.preproc.recentering 	import frame_shift, frame_center, cube_recenter_2dfit
 from vip_hci.preproc.derotation  	import frame_rotate
@@ -16,7 +17,7 @@ from vip_hci.fm 				 	import normalize_psf
 from vip_hci.var.shapes				import get_square
 from vip_hci.fits 					import open_fits
 
-from plottools					import plot_to_compare, plot_cube, plot_detection, plot_angles 
+from plottools					import plot_to_compare, plot_cube, plot_detection, plot_cube_multiband 
 from detection 					import get_intersting_coords, optimize_params
 from pca 						import reduce_pca
 
@@ -100,7 +101,7 @@ def fit_and_crop(cube, use_pos=0, n_jobs=1):
 
 	return cube_center, fwhm_sphere, model_2d
 
-def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
+def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False, dpi=100, text_box=''):
 	""" Fit a 2 dimensional gaussian
 	
 	This method first creates a gaussian model from the parameters of images. 
@@ -141,7 +142,7 @@ def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False):
 	fwhm_y_e /= gaussian_fwhm_to_sigma
 
 	if plot:
-		plot_to_compare([image, fit(x, y)], ['Original', 'Model'])
+		plot_to_compare([image, fit(x, y)], ['Original', 'Model'], dpi=dpi, text_box=text_box)
 	return fwhm_y, fwhm_x, mean_y, mean_x
 
 def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
@@ -200,36 +201,26 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
 
 	return shifted_cube
 
-def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pixel_scale=0.01225, n_jobs=1, plot=False):
-	"""Main function to run Negative Fake Companion (NEGFC) preprocessing.
-	
-	:param cube_path: Path to the cube image
-	:type cube_path: string
-	:param psf_path: Path to the PSF image
-	:type psf_path: string
-	:param rot_ang_path: Path to the rotation angles
-	:type rot_ang_path: string
-	:param wavelength: Wavelength to use (H2=0  H3=1 / K1=0  K2=1), defaults to 0
-	:type wavelength: number, optional
-	:param psf_pos: Either the initial (0) or final (1) PSF, defaults to 0
-	:type psf_pos: number, optional
-	:param pixel_scale: pixel scale arcsec/pixel, defaults to 0.01225 from IRDIS/SPHERE
-	:type pixel_scale: number, optional
-	"""
+def run_pipeline(opt):
+	"""Main function to run Negative Fake Companion (NEGFC) preprocessing."""
 		
 	# First we load images from paths
-	cube       = open_fits(cube_path,    header=False) 
-	psf        = open_fits(psf_path,     header=False) 
-	rot_angles = open_fits(rot_ang_path, header=False) # where they come from?
-	# plot_cube(cube, save=True)
-	# plot_to_compare([psf[1][0], psf[1][1]], ['PSF init', 'PSF end'])
+	cube        = open_fits(opt.cube,    header=False) 
+	psf         = open_fits(opt.psf,     header=False) 
+	rot_angles  = open_fits(opt.ra, 	 header=False)
+
+	rot_angles  = -rot_angles + opt.ang_corr
+	if opt.plot:
+		plot_cube_multiband(cube, dpi=100, save=False, text_box='Frame cubes separated by wavelengths. \
+															     We have 90 frames in total.')
+		# plot_to_compare([psf[1][0], psf[1][1]], ['PSF init', 'PSF end'])
 
 	# Check cube dimensions
 	if cube.shape[-1] % 2 == 0:
 		print('[WARNING] Cube contains odd frames. Shifting and rescaling...')
-		cube = shift_and_crop_cube(cube[wavelength], n_jobs=n_jobs)
+		cube = shift_and_crop_cube(cube[opt.w], n_jobs=opt.njobs)
 
-	single_psf = psf[wavelength, psf_pos, :-1, :-1]
+	single_psf = psf[opt.w, opt.p, :-1, :-1]
 	ceny, cenx = frame_center(single_psf)
 	imside = single_psf.shape[0]
 	cropsize = 30
@@ -239,53 +230,86 @@ def run_pipeline(cube_path, psf_path, rot_ang_path, wavelength=0, psf_pos=0, pix
 	                                      ceny, cenx, 
 	                                      position=True, 
 	                                      verbose=False)
-	if plot:
-		plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'])
+	if opt.plot:
+		plot_to_compare([single_psf, psf_subimage], ['Original', 'Subimage'], 
+						text_box='Original and cropped image. \
+								We cut the original PSF image to avoid \
+								processing void pixels around the star')
 
-	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=plot)
+	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=opt.plot, dpi=100, 
+		text_box='Gaussian model adjusted on the original PSF (LEFT) pixels. \
+				  We fit a parametric models to find the actual center of the star')
+
 	mean_y +=  suby # put the subimage in the original center
 	mean_x +=  subx # put the subimage in the original center
 	
 	fwhm_sphere  = np.mean([fwhm_y, fwhm_x]) # Shared across the frames 
-	psf_rec = recenter_cube(psf[wavelength], 
+	psf_rec = recenter_cube(psf[opt.w], 
 							single_psf, 
 							fwhm_sphere=fwhm_sphere, 
-							n_jobs=n_jobs)
+							n_jobs=opt.njobs)
 	
 	# Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
 	# It also allows to crop the array and center the PSF at the center of the array(s).
-	psf_norm, fwhm_flux, fwhm = normalize_psf(psf_rec[psf_pos], 
+	psf_norm, fwhm_flux, fwhm = normalize_psf(psf_rec[opt.p], 
 	                                          fwhm=fwhm_sphere,
 	                                          full_output=True, 
 	                                          verbose=False) 
-	if plot:
-		plot_to_compare([psf_rec[psf_pos], psf_norm], ['PSF reconstructed', 'PSF normalized'])
+	if opt.plot:
+		plot_to_compare([psf_rec[opt.p], psf_norm], ['PSF reconstructed', 'PSF normalized'], dpi=100,
+					text_box='Normalized PSF. We use the normalized PSF as a mold to learn the distribution of the companion.')
 
 	# ======== MOON DETECTION =========
-	frame, res_cube = reduce_pca(cube[wavelength], rot_angles, ncomp=1, fwhm=4, plot=plot, return_cube=True, n_jobs=n_jobs)
+	frame, res_cube = reduce_pca(cube[opt.w], rot_angles, ncomp=1, fwhm=4, plot=opt.plot, 
+								return_cube=True, dpi=100, n_jobs=opt.njobs,
+								text_box='Collapsed (median) PCA residuals after using the first principal component \
+								along the time axis to reconstruct the original image. The first 3 images correspond to a single frame-sample from the cube')
 	# Blob can be defined as a region of an image in which some properties are constant or 
 	# vary within a prescribed range of values.
-	table = get_intersting_coords(frame, psf_norm, fwhm=fwhm, bkg_sigma=5, plot=plot)
+	table = get_intersting_coords(frame, psf_norm, fwhm=fwhm, bkg_sigma=5, plot=opt.plot)
 	# remove coords having low signal to noise ratio
 	snr_thresh = 2
 	table = table[table['snr'] > snr_thresh]
+	# Plot detection
+	if opt.plot or True:
+		plot_detection(frame, table, bounded=False, dpi=100, 
+			text_box='We have detected companions from the collapsed (median) frame, and have obtained all possible candidates from the get_interesting_coords function. \
+					 However, we have filtered out some of them as they do not show any variation from the background.')
 
 	# How many FWHM we want to consider to fit the model
 	cube_final = optimize_params(table, 
 								 res_cube, 
 								 psf_norm, 
 								 fwhm_sphere, 
-								 -rot_angles, 
+								 rot_angles, 
 								 pixel_scale, 
 								 nfwhm=1,
 								 method='stddev')
 
-	# plot_cube(cube_final, save=True, root='./figures/cube_final')
+
 if __name__ == '__main__':
-	cube_path    = './data/HCI/center_im.fits'
-	psf_path     = './data/HCI/median_unsat.fits' # Why this name?
-	rot_ang_path = './data/HCI/rotnth.fits'
+	parser = argparse.ArgumentParser()
 
+	parser.add_argument('--cube', default='./data/HCI/center_im.fits', type=str,
+	                help='Cube file containing coronograph frames sorted by time')
+	parser.add_argument('--psf', default='./data/HCI/median_unsat.fits', type=str,
+	                help='PSFs file')
+	parser.add_argument('--ra', default='./data/HCI/rotnth.fits', type=str,
+	                help='Rotational angles')
 
-	run_pipeline(cube_path, psf_path, rot_ang_path, 
-		n_jobs=5, plot=False)
+	parser.add_argument('--w', default=0, type=int,
+	                    help='opt.w to work with')
+	parser.add_argument('--p', default=0, type=int,
+	                    help='Position of the PSF (init, final) to be used as a reference within the normalization')
+
+	parser.add_argument('--ang-corr', default=102.18, type=float,
+	                    help='Angles correction factor')
+	parser.add_argument('--px-corr', default=0.01225, type=float,
+	                    help='Pixel scale')
+	parser.add_argument('--njobs', default=1, type=int,
+	                    help='Number of cores to distribute tasks')
+	parser.add_argument('--plot', default=False, action='store_true',
+	                    help='Plot every intermidiate step in the pipeline')
+
+	opt = parser.parse_args()
+	run_pipeline(opt)

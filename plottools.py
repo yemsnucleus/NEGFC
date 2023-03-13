@@ -157,7 +157,7 @@ class AngleAnnotation(Arc):
 
 def plot_angles(sub, x, y, index=0):
     fig, ax = plt.subplots(nrows=1, ncols=1)
-    ax.imshow(sub, extent=[-sub.shape[1]/2., 
+    ax.imshow(sub.T, extent=[-sub.shape[1]/2., 
                             sub.shape[1]/2., 
                             -sub.shape[0]/2., 
                             sub.shape[0]/2. ])
@@ -180,7 +180,7 @@ def plot_angles(sub, x, y, index=0):
     # fig.savefig('./figures/negfc/{}.png'.format(index))
     plt.show()
 
-def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savefig_params):
+def plot_to_compare(images, titles, axes=None, show=True, img_file=None, dpi=100, text_box='',**savefig_params):
     """ Plot a list of images and their corresponding titles
     
     :param images: A list of 2dim images
@@ -192,17 +192,17 @@ def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savef
     :returns: Axes with the image plots
     :rtype: {matpllotlib.axes.Axes}
     """
+    text_box = shape_text(text_box)
     if axes is None:
-        fig, axes = plt.subplots(1, len(images), dpi=300,
-            gridspec_kw={'hspace': 0., 'wspace': .4})
+        fig, axes = plt.subplots(1, len(images), dpi=dpi,
+            gridspec_kw={'hspace': 0.1, 'wspace': .5})
     for i, (im, ti) in enumerate(zip(images, titles)):
-        im_obj = axes[i].imshow(im)
-        # axes[i].set_ylim(50, 150)
-        # axes[i].set_xlim(50, 150)
+        im_obj = axes[i].imshow(im.T)
         divider = make_axes_locatable(axes[i])
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im_obj, cax=cax)
         axes[i].set_title(ti)
+    fig.text(0.2, 0.1, text_box, fontdict=None, backgroundcolor='thistle')
     if show:
         plt.show()
     if img_file:
@@ -210,7 +210,7 @@ def plot_to_compare(images, titles, axes=None, show=True, img_file=None, **savef
 
     return axes 
 
-def plot_detection(frame, table, bounded=True):
+def plot_detection(frame, table, bounded=True, dpi=100, text_box=''):
     ''' Plot a detection in a given frame
     
     By using a set of coordinates, this function draw a circle with center row[x], row[y]
@@ -222,20 +222,20 @@ def plot_detection(frame, table, bounded=True):
     :param bounded: If a zoom to the center is applied, defaults to True
     :type bounded: bool, optional
     '''
-    fig, ax = plt.subplots(figsize=(5,5), dpi=200)
-    ax.imshow(frame)
+    text_box = shape_text(text_box)
+    fig, ax = plt.subplots(1,1, dpi=dpi)
+    ax.imshow(frame.T)
+    fig.text(0., 0.1, text_box, fontdict=None, backgroundcolor='thistle')
     for _, row in table.iterrows():
-        circle = plt.Circle((row['x'], row['y']), row['fwhm_mean'], fill=False, edgecolor='r')  
+        circle = plt.Circle((row['y'], row['x']), row['fwhm_mean'], fill=False, edgecolor='r')  
         ax.add_patch(circle)
-        if bounded:
-            ax.set_xlim(50, 150)
-            ax.set_ylim(50, 150)
+    fig.tight_layout()
     plt.show()
 
 def plot_cube(cube, save=False, root='./figures/cube_gif'):
     """ Plot each frame from a cube
     
-    :param cube: A cube containing frames
+    :param cube: A cube containing frames in a single wavelength
     :type cube: numpy.ndarray
     :param save: Write each frame figure, defaults to False
     :type save: bool, optional
@@ -245,7 +245,7 @@ def plot_cube(cube, save=False, root='./figures/cube_gif'):
         fig, axes = plt.subplots(1, 1, dpi=300, gridspec_kw={'hspace': 0., 'wspace': .4})       
         # y, x  = frame_center(cube[i])
         # frame = get_square(cube[i], size=40, y=y, x=x, position=False)
-        im_obj = axes.imshow(cube[i])
+        im_obj = axes.imshow(cube[i].T)
         divider = make_axes_locatable(axes)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im_obj, cax=cax)
@@ -255,23 +255,58 @@ def plot_cube(cube, save=False, root='./figures/cube_gif'):
             plt.savefig(f'{root}/{i}.png', format='png',  bbox_inches = "tight")
         else:
             plt.show()
-            
+
+def shape_text(text, wpr=10):
+    final = ''
+    for index, word in enumerate(text.split()):
+        if index % wpr == 0 and index != 0:
+            final += word+'\n'
+        else:
+            final += word+' '
+    return final
+
+def plot_cube_multiband(cube, save=False, dpi=100, root='./figures/cube_gif', text_box=''):
+    """ Plot each frame from a cube
+    
+    :param cube: A cube containing frames
+    :type cube: numpy.ndarray
+    :param save: Write each frame figure, defaults to False
+    :type save: bool, optional
+    """
+    text_box = shape_text(text_box)
+
+    os.makedirs(root, exist_ok=True)
+    n_bands = cube.shape[0]
+    width = cube.shape[-1]
+    fig, axes = plt.subplots(1, n_bands, dpi=dpi, gridspec_kw={'hspace': 0., 'wspace': .4})   
+    for i in range(cube.shape[0]):
+        for lambda_ in range(n_bands):
+            # y, x  = frame_center(cube[i])
+            # frame = get_square(cube[i], size=40, y=y, x=x, position=False)
+            im_obj = axes[lambda_].imshow(cube[lambda_][i].T)
+            divider = make_axes_locatable(axes[lambda_])
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            plt.colorbar(im_obj, cax=cax)
+            axes[lambda_].set_title(r'$\lambda = H{}$'.format(lambda_))
+            fig.text(.38, .75, f'{i}-th frame from the cube', va='center', rotation='horizontal')
+
+        fig.text(0.1, 0.1, text_box, fontdict=None, backgroundcolor='thistle')
+        if save:
+            plt.savefig(f'{root}/{i}.png', format='png',  bbox_inches = "tight")
+        else:
+            plt.show()
+        break
 
 def plot_optimization(frame, frame_negfc, msg='', root='./figures/negfc_opt/'):
     fig, axes = plt.subplots(1, 3, figsize=(5,5), sharex=True, sharey=True, dpi=300)
     axes = axes.flatten()
     axes[0].imshow(frame)
     axes[0].set_title('Frame')
-    # axes[0].set_ylim(50, 150)
-    # axes[0].set_xlim(50, 150)
     axes[1].imshow(frame_negfc)
     axes[1].set_title('Frame + FC')
-    # axes[1].set_ylim(50, 150)
-    # axes[1].set_xlim(50, 150)
-    axes[2].imshow(frame_negfc-frame)
+    residuals = frame_negfc - frame
+    axes[2].imshow(residuals.T)
     axes[2].set_title(msg)
-    # axes[2].set_ylim(50, 150)
-    # axes[2].set_xlim(50, 150)
 
     files = os.listdir(root)
     if len(files) == 0:
@@ -298,15 +333,15 @@ def plot_mask(frame, posx, posy, fwhm):
     h, w = frame.shape
     mask = create_circular_mask(h, w, center=(posx, posy), radius=fwhm)
     masked_frame = frame*mask
-    plt.imshow(masked_frame)
-    plt.scatter(posx, posy, marker='x', s=10, color='yellow')
-    plt.plot([posx+fwhm, posx-fwhm], [posy, posy], linestyle='--', color='blue', linewidth=0.5)
+    plt.imshow(masked_frame.T)
+    plt.scatter(posy, posx, marker='x', s=5, color='yellow')
+    plt.plot([posy+fwhm, posy-fwhm], [posx, posx], linestyle='--', color='blue', linewidth=0.5)
 
     plt.show()
 
 def plot_region(frame, posx, posy, xx=None, yy=None):
     plt.figure(figsize=(5,5), dpi=300)
-    plt.imshow(frame)
+    plt.imshow(frame.T)
     plt.scatter(posx, posy, marker='x', color='red')
     if xx is not None and yy is not None:
         plt.scatter(xx, yy, marker='x', color='yellow', s=0.1, alpha=0.5)
