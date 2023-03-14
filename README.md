@@ -33,17 +33,12 @@ To run the script with default parameters:
 ```
 python main.py
 ```
-To change data, modify parameters within the `__main__`  statement.
-```
-if __name__ == '__main__':
-	cube_path    = './data/HCI/center_im.fits'
-	psf_path     = './data/HCI/median_unsat.fits' # Why this name?
-	rot_ang_path = './data/HCI/rotnth.fits'
 
-
-	run_pipeline(cube_path, psf_path, rot_ang_path, 
-		n_jobs=5, plot=False)
+To run the script with another dataset (cube, psf and angles must be in FITS format):
 ```
+python main.py --cube path_to_cube --psf path_to_psf --ra path_to_rotation_angles --w wavelength_value --p position_value --ang_corr angle_correction_value --px_corr pixel_scale_value
+```
+
 
 ## Directory tree 
 ```
