@@ -313,13 +313,13 @@ if __name__ == '__main__':
 	                    help='Pixel scale')
 	parser.add_argument('--njobs', default=1, type=int,
 	                    help='Number of cores to distribute tasks')
-	parser.add_argument('--plot', default=False,
+	parser.add_argument('--plot', default=False, action='store_true',
 	                    help='Plot every intermidiate step in the pipeline')
-	parser.add_argument('--fbf', default=False,
+	parser.add_argument('--fbf', default=False, action='store_true',
 	                    help='True if using frame by frame technique (with optimization). If false only uses the median of the frames without optimization')
-	parser.add_argument('--show_detections', default=False,
+	parser.add_argument('--show_detections', default=False, action='store_true',
 	                    help='If True prints the positions, flux and snr of possible companions')
-	parser.add_argument('--snr', default=2,
+	parser.add_argument('--snr', default=2, type=float,
 	                    help='S/N threshold for deciding whether the blob is a detection or not')
 	opt = parser.parse_args()
 	run_pipeline(opt)
