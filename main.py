@@ -268,17 +268,21 @@ def run_pipeline(opt):
 	# Blob can be defined as a region of an image in which some properties are constant or 
 	# vary within a prescribed range of values.
 	table = get_intersting_coords(frame, psf_norm, fwhm=fwhm, bkg_sigma=5, plot=opt.plot)
+	if opt.show_detections:
+		print(table)
 	# remove coords having low signal to noise ratio
-	snr_thresh = 2
+	snr_thresh = opt.snr #By default is 2
 	table = table[table['snr'] > snr_thresh]
+
 	# Plot detection
 	if opt.plot :
 		plot_detection(frame, table, bounded=False, dpi=100, 
 			text_box='We have detected companions from the collapsed (median) frame, and have obtained all possible candidates from the get_interesting_coords function. \
 					 However, we have filtered out some of them as they do not show any variation from the background.')
 
-	# How many FWHM we want to consider to fit the model
-	cube_final = optimize_params(table, 
+	if opt.fbf:	
+    	# How many FWHM we want to consider to fit the model
+		cube_final = optimize_params(table, 
 								 res_cube, 
 								 psf_norm, 
 								 fwhm_sphere, 
@@ -299,7 +303,7 @@ if __name__ == '__main__':
 	                help='Rotational angles')
 
 	parser.add_argument('--w', default=0, type=int,
-	                    help='opt.w to work with')
+	                    help='Wavelength to work with')
 	parser.add_argument('--p', default=0, type=int,
 	                    help='Position of the PSF (init, final) to be used as a reference within the normalization')
 
@@ -311,6 +315,11 @@ if __name__ == '__main__':
 	                    help='Number of cores to distribute tasks')
 	parser.add_argument('--plot', default=False,
 	                    help='Plot every intermidiate step in the pipeline')
-
+	parser.add_argument('--fbf', default=False,
+	                    help='True if using frame by frame technique (with optimization). If false only uses the median of the frames without optimization')
+	parser.add_argument('--show_detections', default=False,
+	                    help='If True prints the positions, flux and snr of possible companions')
+	parser.add_argument('--snr', default=2,
+	                    help='S/N threshold for deciding whether the blob is a detection or not')
 	opt = parser.parse_args()
 	run_pipeline(opt)
