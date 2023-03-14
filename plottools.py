@@ -197,7 +197,7 @@ def plot_to_compare(images, titles, axes=None, show=True, img_file=None, dpi=100
         fig, axes = plt.subplots(1, len(images), dpi=dpi,
             gridspec_kw={'hspace': 0.1, 'wspace': .5})
     for i, (im, ti) in enumerate(zip(images, titles)):
-        im_obj = axes[i].imshow(im.T)
+        im_obj = axes[i].imshow(im, origin = "lower")
         divider = make_axes_locatable(axes[i])
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im_obj, cax=cax)
@@ -224,10 +224,10 @@ def plot_detection(frame, table, bounded=True, dpi=100, text_box=''):
     '''
     text_box = shape_text(text_box)
     fig, ax = plt.subplots(1,1, dpi=dpi)
-    ax.imshow(frame.T)
+    ax.imshow(frame, origin="lower")
     fig.text(0., 0.1, text_box, fontdict=None, backgroundcolor='thistle')
     for _, row in table.iterrows():
-        circle = plt.Circle((row['y'], row['x']), row['fwhm_mean'], fill=False, edgecolor='r')  
+        circle = plt.Circle((row['x'], row['y']), row['fwhm_mean'], fill=False, edgecolor='r')  
         ax.add_patch(circle)
     fig.tight_layout()
     plt.show()
@@ -245,7 +245,7 @@ def plot_cube(cube, save=False, root='./figures/cube_gif'):
         fig, axes = plt.subplots(1, 1, dpi=300, gridspec_kw={'hspace': 0., 'wspace': .4})       
         # y, x  = frame_center(cube[i])
         # frame = get_square(cube[i], size=40, y=y, x=x, position=False)
-        im_obj = axes.imshow(cube[i].T)
+        im_obj = axes.imshow(cube[i], origin="lower")
         divider = make_axes_locatable(axes)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im_obj, cax=cax)
@@ -283,7 +283,7 @@ def plot_cube_multiband(cube, save=False, dpi=100, root='./figures/cube_gif', te
         for lambda_ in range(n_bands):
             # y, x  = frame_center(cube[i])
             # frame = get_square(cube[i], size=40, y=y, x=x, position=False)
-            im_obj = axes[lambda_].imshow(cube[lambda_][i].T)
+            im_obj = axes[lambda_].imshow(cube[lambda_][i], origin="lower")
             divider = make_axes_locatable(axes[lambda_])
             cax = divider.append_axes("right", size="5%", pad=0.05)
             plt.colorbar(im_obj, cax=cax)
@@ -300,12 +300,12 @@ def plot_cube_multiband(cube, save=False, dpi=100, root='./figures/cube_gif', te
 def plot_optimization(frame, frame_negfc, msg='', root='./figures/negfc_opt/'):
     fig, axes = plt.subplots(1, 3, figsize=(5,5), sharex=True, sharey=True, dpi=300)
     axes = axes.flatten()
-    axes[0].imshow(frame)
+    axes[0].imshow(frame, origin="lower")
     axes[0].set_title('Frame')
-    axes[1].imshow(frame_negfc)
+    axes[1].imshow(frame_negfc, origin="lower")
     axes[1].set_title('Frame + FC')
     residuals = frame_negfc - frame
-    axes[2].imshow(residuals.T)
+    axes[2].imshow(residuals, origin="lower")
     axes[2].set_title(msg)
 
     files = os.listdir(root)
@@ -333,7 +333,7 @@ def plot_mask(frame, posx, posy, fwhm):
     h, w = frame.shape
     mask = create_circular_mask(h, w, center=(posx, posy), radius=fwhm)
     masked_frame = frame*mask
-    plt.imshow(masked_frame.T)
+    plt.imshow(masked_frame, lower="origin")
     plt.scatter(posy, posx, marker='x', s=5, color='yellow')
     plt.plot([posy+fwhm, posy-fwhm], [posx, posx], linestyle='--', color='blue', linewidth=0.5)
 
@@ -341,7 +341,7 @@ def plot_mask(frame, posx, posy, fwhm):
 
 def plot_region(frame, posx, posy, xx=None, yy=None):
     plt.figure(figsize=(5,5), dpi=300)
-    plt.imshow(frame.T)
+    plt.imshow(frame, lower="origin")
     plt.scatter(posx, posy, marker='x', color='red')
     if xx is not None and yy is not None:
         plt.scatter(xx, yy, marker='x', color='yellow', s=0.1, alpha=0.5)

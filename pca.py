@@ -1,5 +1,5 @@
 import numpy as np
-
+import vip_hci as vip
 from vip_hci.var.shapes			import get_square, prepare_matrix
 from vip_hci.preproc.parangles	import check_pa_vector
 from vip_hci.preproc.derotation import cube_derotate
@@ -61,10 +61,10 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False,
 
 	res_frame = np.nanmedian(array_der, axis=0)
 	if plot:
-		plot_to_compare([matrix[0], reconstructed[0], residuals[0], res_frame], 
+		plot_to_compare([matrix[0], reconstructed[0], array_der[0], res_frame], 
 						['Original', 'Reconstructed', 'Residuals', 'Median'], 
 						dpi=dpi, text_box=text_box)
-
+	#vip.fits.write_fits('./figures/fr_pca.fits', res_frame)
 	if return_cube:
 		return res_frame, residuals
 	return res_frame

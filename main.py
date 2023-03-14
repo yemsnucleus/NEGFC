@@ -208,6 +208,7 @@ def run_pipeline(opt):
 	cube        = open_fits(opt.cube,    header=False) 
 	psf         = open_fits(opt.psf,     header=False) 
 	rot_angles  = open_fits(opt.ra, 	 header=False)
+	pixel_scale = opt.px_corr
 
 	rot_angles  = -rot_angles + opt.ang_corr
 	if opt.plot:
@@ -271,7 +272,7 @@ def run_pipeline(opt):
 	snr_thresh = 2
 	table = table[table['snr'] > snr_thresh]
 	# Plot detection
-	if opt.plot or True:
+	if opt.plot :
 		plot_detection(frame, table, bounded=False, dpi=100, 
 			text_box='We have detected companions from the collapsed (median) frame, and have obtained all possible candidates from the get_interesting_coords function. \
 					 However, we have filtered out some of them as they do not show any variation from the background.')
@@ -302,13 +303,13 @@ if __name__ == '__main__':
 	parser.add_argument('--p', default=0, type=int,
 	                    help='Position of the PSF (init, final) to be used as a reference within the normalization')
 
-	parser.add_argument('--ang-corr', default=102.18, type=float,
+	parser.add_argument('--ang_corr', default=0, type=float,
 	                    help='Angles correction factor')
-	parser.add_argument('--px-corr', default=0.01225, type=float,
+	parser.add_argument('--px_corr', default=0.01225, type=float,
 	                    help='Pixel scale')
 	parser.add_argument('--njobs', default=1, type=int,
 	                    help='Number of cores to distribute tasks')
-	parser.add_argument('--plot', default=False, action='store_true',
+	parser.add_argument('--plot', default=False,
 	                    help='Plot every intermidiate step in the pipeline')
 
 	opt = parser.parse_args()
