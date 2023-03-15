@@ -275,9 +275,11 @@ def run_pipeline(opt):
 	# remove coords having low signal to noise ratio
 	snr_thresh = opt.snr #By default is 2
 	table = table[table['snr'] > snr_thresh]
+	if not opt.fbf and len(table)!=0:
+		table = table.head(1)
 
 	# Plot detection
-	if opt.plot :
+	if opt.plot or True:
 		plot_detection(frame, table, bounded=False, dpi=100, 
 			text_box='We have detected companions from the collapsed (median) frame, and have obtained all possible candidates from the get_interesting_coords function. \
 					 However, we have filtered out some of them as they do not show any variation from the background.')
