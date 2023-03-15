@@ -154,6 +154,11 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 			    			method = 'Nelder-Mead')
 
 			radius, theta0, flux = solu.x
+
+
+			# MCMC
+			
+
 			f_0_comp[index]=flux
 			r_0_comp[index]=radius
 			theta_0_comp[index]=theta0

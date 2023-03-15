@@ -208,6 +208,8 @@ def run_pipeline(opt):
 	cube        = open_fits(opt.cube,    header=False) 
 	psf         = open_fits(opt.psf,     header=False) 
 	rot_angles  = open_fits(opt.ra, 	 header=False)
+	lambdas_inf = open_fits(opt.lam, 	 header=False)
+	lambda_d	= lambdas_inf[opt.w] # lambda over d
 	pixel_scale = opt.px_corr
 
 	rot_angles  = -rot_angles + opt.ang_corr
@@ -288,7 +290,7 @@ def run_pipeline(opt):
 								 fwhm_sphere, 
 								 rot_angles, 
 								 pixel_scale, 
-								 nfwhm=1,
+								 nfwhm=lambda_d, # resolution measure
 								 method='stddev')
 
 
@@ -301,6 +303,8 @@ if __name__ == '__main__':
 	                help='PSFs file')
 	parser.add_argument('--ra', default='./data/HCI/rotnth.fits', type=str,
 	                help='Rotational angles')
+	parser.add_argument('--lam', default='./data/HCI/lam.fits', type=str,
+	                help='Observation wavelengths information')
 
 	parser.add_argument('--w', default=0, type=int,
 	                    help='Wavelength to work with')
