@@ -9,6 +9,7 @@ import argparse
 import math
 import os
 
+from astropy.io import fits
 from vip_hci.preproc.recentering 	import frame_shift, frame_center, cube_recenter_2dfit
 from vip_hci.preproc.derotation  	import frame_rotate
 from vip_hci.preproc.cosmetics 	 	import cube_crop_frames
@@ -205,14 +206,32 @@ def run_pipeline(opt):
 	"""Main function to run Negative Fake Companion (NEGFC) preprocessing."""
 		
 	# First we load images from paths
-	cube        = open_fits(opt.cube,    header=False) 
-	psf         = open_fits(opt.psf,     header=False) 
+	cube        = open_fits(opt.cube,    header=True) 
+	psf         = open_fits(opt.psf,     header=True)
 	rot_angles  = open_fits(opt.ra, 	 header=False)
 	lambdas_inf = open_fits(opt.lam, 	 header=False)
-	lambda_d	= lambdas_inf[opt.w] # lambda over d
-	pixel_scale = opt.px_corr
+	filter_table = pd.read_csv("./data/filters.csv")
+	headers = [cube[1], psf[1]]
+	cube = cube[0]
+	psf = psf[0]
 
+	#lambda_d	= lambdas_inf[opt.w] 
+	pixel_scale = opt.px_corr
 	rot_angles  = -rot_angles + opt.ang_corr
+
+	try:
+		system_name = headers[0]["HIERARCH ESO DET NAME"]
+		dual_filter = headers[0]["HIERARCH ESO INS1 OPTI2 NAME"]
+	except:
+		system_name = headers[1]["HIERARCH ESO DET NAME"]
+		dual_filter = headers[1]["HIERARCH ESO INS1 OPTI2 NAME"]
+	telescope_diameter = 8
+	try:
+		filter_value = float(filter_table[filter_table["filter_name"] == dual_filter]["wavelength(nm)"].iloc[0][opt.w])
+	except:
+		filter_value = 1.593 #By default is H2
+	lambda_d = filter_value*1e-6/telescope_diameter*180/math.pi*3600/pixel_scale # lambda over d
+	
 	if opt.plot:
 		plot_cube_multiband(cube, dpi=100, save=False, text_box='Frame cubes separated by wavelengths. \
 															     We have 90 frames in total.')
@@ -226,7 +245,7 @@ def run_pipeline(opt):
 	single_psf = psf[opt.w, opt.p, :-1, :-1]
 	ceny, cenx = frame_center(single_psf)
 	imside = single_psf.shape[0]
-	cropsize = 30
+	cropsize = 30 #int(1.22 * 3 * lambda_d)
 
 	psf_subimage, suby, subx = get_square(single_psf, 
 										  min(cropsize, imside),
@@ -280,8 +299,12 @@ def run_pipeline(opt):
 
 	# Plot detection
 	if opt.plot or True:
+		detection_text = ''
+		for i in range(len(table)):
+			    detection_text+= '\nCandidate ' + str(i) + '-> x: ' + str(table.loc[i].x) + ', y: ' + str(table.loc[i].y) + ', flux: ' + str(table.loc[i].flux)
+		print(detection_text)
 		plot_detection(frame, table, bounded=False, dpi=100, 
-			text_box='We have detected companions from the collapsed (median) frame, and have obtained all possible candidates from the get_interesting_coords function. \
+			text_box= 'We have detected companions from the collapsed (median) frame, and have obtained all possible candidates from the get_interesting_coords function. \
 					 However, we have filtered out some of them as they do not show any variation from the background.')
 
 	if opt.fbf:	
