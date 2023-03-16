@@ -105,10 +105,20 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	table['y']    = yy
 	table['flux'] = fluxes
 	table['fwhm_mean'] = fwhm_mean
-	table['snr']  = table.apply(lambda col: snr(frame, 
-											 	(col['x'], col['y']), 
-											 	fwhm, False, verbose=False), axis=1)
+	
+	centery, centerx = frame_center(frame)
+	drops = []
+	for i in range(len(table)):
+		sourcex, sourcey = table.x[i], table.y[i]
+		sep = dist(centery, centerx, float(sourcey), float(sourcex))
+		not sep > (fwhm / 2) + 1:
+			drop.append(table.iloc[i].name)
+	table.drop(drops, inplace=True)
 
+	if len(table) > 0:
+		table['snr']  = table.apply(lambda col: snr(frame, 
+											 	(col['x'], col['y']), 
+											 	fwhm, True, verbose=False), axis=1)
 	return table
 
 def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, plot=False, method='stddev'):
