@@ -1,6 +1,6 @@
 import numpy as np
 
-from plottools 						import plot_optimization, plot_mask
+from plottools 						import plot_optimization, plot_mask, plot_to_compare
 from vip_hci.preproc.recentering	import frame_shift, frame_center
 from skimage.draw					import disk
 
@@ -49,6 +49,13 @@ def chisquare_mod(modelParameters, frame, ang, pixel, psf_norma, fwhm, fmerit):
 	yy, xx = indices
 	values = frame_negfc[yy, xx].ravel()    
 	
+	# plot_to_compare([frame, frame_negfc], ['Frame', 'Frame+FC'])
+	# import matplotlib.pyplot as plt
+	# plt.figure(figsize=(5,5), dpi=200)
+	# plt.imshow(frame_negfc)
+	# plt.scatter(posx, posy, marker='x', color='red')
+	# plt.scatter(xx, yy, marker='.', s=.5, color='yellow', alpha=0.5)
+	# plt.show()
 	# plot_mask(frame_negfc, posx, posy, fwhm)
 
 	# Function of merit
@@ -106,9 +113,12 @@ def inject_fcs_cube_mod(frame, template, angle, flux, radius, theta, n_branches=
 		y = radius * np.sin(ang - np.deg2rad(angle))
 		x = radius * np.cos(ang - np.deg2rad(angle))
 		# we shape the normed PSF to the companion flux
-		img_shifted = frame_shift(frame_copy, y, x, imlib=imlib)
-		import matplotlib.pyplot as plt
+		img_shifted = frame_shift(frame_copy, x, y, imlib=imlib)
 		tmp += img_shifted*flux
-	frame_out = frame + tmp
+		# plot_to_compare([img_shifted, tmp], ['Shifted PSF', 'Shifted and scaled PSF'])
 
+
+	frame_out = frame + tmp
+	# plot_to_compare([frame, frame_out], ['Frame', 'Frame + FC'])
+	
 	return frame_out   

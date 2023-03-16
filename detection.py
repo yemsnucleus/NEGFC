@@ -3,7 +3,7 @@ import numpy as np
 
 from astropy.stats 					import sigma_clipped_stats, gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 from loss	 						import chisquare_mod, inject_fcs_cube_mod
-from plottools 						import plot_to_compare
+from plottools 						import plot_to_compare, plot_detection
 from astropy.modeling				import models, fitting
 from skimage.feature				import peak_local_max
 from vip_hci.preproc.recentering 	import frame_center
@@ -41,8 +41,8 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	# Padding the image with zeros to avoid errors at the edges
 	pad_value = 10
 	array_padded = np.pad(frame, pad_width=pad_value, mode='constant', constant_values=0)
-	if plot:
-		plot_to_compare([frame, array_padded], ['Original', 'Padded'])
+	
+	# plot_to_compare([frame, array_padded], ['Original', 'Padded'])
 
 	# returns the coordinates of local peaks (maxima) in an image.
 	coords_temp = peak_local_max(frame, threshold_abs=bkg_level,
@@ -79,7 +79,9 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 		
 		if plot:
 			y, x = np.indices(subim.shape)	
-			plot_to_compare([subim, fit(x, y)], ['subimage', 'gaussian'])
+			plot_to_compare([subim.T, fit(x, y).T], ['subimage', 'gaussian'], dpi=100, 
+				text_box='Companion candidate and its adjusted gaussian model. \
+				Here we find an approximated set of coordinates and flux associated to the companion.')
 
 		fwhm_y = fit.y_stddev.value * gaussian_sigma_to_fwhm
 		fwhm_x = fit.x_stddev.value * gaussian_sigma_to_fwhm
@@ -121,10 +123,7 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 									   np.zeros(int(n_frames))
 	
 	x_cube_center, y_cube_center = frame_center(cube[0])
-
-	if plot:
-		plot_detection(frame, table)
-
+# 
 	print(':'*100)
 	for _, row in table.iterrows():
 		x 	 = float(row['x']) - x_cube_center
@@ -147,7 +146,7 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 			solu = minimize(chisquare_mod, 
 							params, 
 							args=(current_frame, 
-								  -rot_angles[index], 
+								  rot_angles[index], 
 								  pixel_scale, 
 								  psf, 
 								  fwhma, 
@@ -155,13 +154,18 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 			    			method = 'Nelder-Mead')
 
 			radius, theta0, flux = solu.x
+
+
+			# MCMC
+			
+
 			f_0_comp[index]=flux
 			r_0_comp[index]=radius
 			theta_0_comp[index]=theta0
 
 			frame_emp = inject_fcs_cube_mod(current_frame, 
 										  	psf, 
-										  	-rot_angles[index], 
+										  	rot_angles[index], 
 										  	-flux, 
 										  	radius, 
 										  	theta0, 

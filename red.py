@@ -1,5 +1,5 @@
 import numpy as np
-import vip_hci as vip
+
 from vip_hci.var.shapes			import get_square, prepare_matrix
 from vip_hci.preproc.parangles	import check_pa_vector
 from vip_hci.preproc.derotation import cube_derotate
@@ -7,7 +7,7 @@ from vip_hci.preproc.derotation import cube_derotate
 from plottools 					import plot_to_compare
 
 
-def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False, dpi=100, text_box='', n_jobs=1):
+def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False, n_jobs=1):
 	""" Reduce cube using Angular Differential Imaging (ADI) techinique. 
 	
 	This function reduce the frame-axis dimension of the cube to 1
@@ -56,15 +56,11 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False,
 	# NOT SURE WHY rot_angles IS NEGATIVE
 	array_der = cube_derotate(residuals, rot_angles, nproc=n_jobs, 
 							  imlib='vip-fft', interpolation='lanczos4')
-
-	# plot_to_compare([residuals[0], array_der[0]], ['Original', 'Rotated'])
-
 	res_frame = np.nanmedian(array_der, axis=0)
 	if plot:
-		plot_to_compare([matrix[0], reconstructed[0], array_der[0], res_frame], 
-						['Original', 'Reconstructed', 'Residuals', 'Median'], 
-						dpi=dpi, text_box=text_box)
-	#vip.fits.write_fits('./figures/fr_pca.fits', res_frame)
+		plot_to_compare([matrix[0], reconstructed[0], residuals[0], res_frame], 
+						['Original', 'Reconstructed', 'Residuals', 'median'])
+
 	if return_cube:
 		return res_frame, residuals
 	return res_frame
