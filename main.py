@@ -230,6 +230,7 @@ def run_pipeline(opt):
 		filter_value = float(filter_table[filter_table["filter_name"] == dual_filter]["wavelength(nm)"].iloc[0][opt.w])
 	except:
 		filter_value = 1.593 #By default is H2
+		
 	lambda_d = filter_value*1e-6/telescope_diameter*180/math.pi*3600/pixel_scale # lambda over d
 	
 	if opt.plot:
@@ -315,7 +316,7 @@ def run_pipeline(opt):
 								 fwhm_sphere, 
 								 rot_angles, 
 								 pixel_scale, 
-								 nfwhm=lambda_d, # resolution measure
+								 nfwhm=lambda_d, # resolution measure`
 								 method='stddev')
 
 
