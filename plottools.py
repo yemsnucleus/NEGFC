@@ -328,16 +328,18 @@ def create_circular_mask(h, w, center=None, radius=None):
     mask = dist_from_center <= radius
     return mask
 
-def plot_mask(frame, posx, posy, fwhm):
-    plt.figure(figsize=(5,5), dpi=300)
+def plot_mask(frame, posx, posy, fwhm, axes=None):
+    if axes is None:
+        fig, axes = plt.subplots(1,1,figsize=(5,5), dpi=300)
     h, w = frame.shape
-    mask = create_circular_mask(h, w, center=(posx, posy), radius=fwhm)
+    mask = create_circular_mask(h, w, center=(posy, posx), radius=fwhm)
     masked_frame = frame*mask
-    plt.imshow(masked_frame, lower="origin")
-    plt.scatter(posy, posx, marker='x', s=5, color='yellow')
-    plt.plot([posy+fwhm, posy-fwhm], [posx, posx], linestyle='--', color='blue', linewidth=0.5)
-
-    plt.show()
+    axes.imshow(masked_frame)
+    axes.scatter(posy, posx, marker='x', s=5, color='yellow')
+    axes.plot([posy-fwhm, posy+fwhm],[posx, posx], linestyle='--', color='blue', linewidth=0.5)
+    if axes is None:
+        plt.show()
+    return axes
 
 def plot_region(frame, posx, posy, xx=None, yy=None):
     plt.figure(figsize=(5,5), dpi=300)

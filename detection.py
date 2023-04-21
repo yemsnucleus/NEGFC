@@ -111,7 +111,8 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 
 	return table
 
-def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, plot=False, method='stddev'):
+def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, 
+					plot=False, full_output=False, method='stddev'):
 	
 	fwhma = int(nfwhm)*float(fwhm)
 	
@@ -155,10 +156,6 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 
 			radius, theta0, flux = solu.x
 
-
-			# MCMC
-			
-
 			f_0_comp[index]=flux
 			r_0_comp[index]=radius
 			theta_0_comp[index]=theta0
@@ -171,4 +168,10 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, pl
 										  	theta0, 
 										  	n_branches=1)
 			cube_emp[index,:,:]=frame_emp
+	
+	if full_output:
+		posy = radius * np.sin(np.deg2rad(theta0)-np.deg2rad(rot_angles[index])) + y_cube_center
+		posx = radius * np.cos(np.deg2rad(theta0)-np.deg2rad(rot_angles[index])) + x_cube_center
+		return cube_emp, f_0_comp, (posx, posy)
+
 	return cube_emp

@@ -31,26 +31,26 @@ def chisquare_mod(modelParameters, frame, ang, pixel, psf_norma, fwhm, fmerit):
 	except TypeError:
 		print('paraVector must be a tuple, {} was given'.format(type(modelParameters)))
 
-	from vip_hci.fm.fakecomp import cube_inject_companions
-	frame_negfc = cube_inject_companions(frame, 
-										psf_norma, 
-										ang, 
-										-flux, 
-										r,
-	                                    plsc=None, 
-	                                    n_branches=1, 
-	                                    theta=theta, imlib='vip-fft',
-	                                    interpolation='lanczos4', transmission=None,
-	                                    radial_gradient=False, full_output=False,
-	                                    verbose=False, nproc=1)
+	# from vip_hci.fm.fakecomp import cube_inject_companions
+	# frame_fake = cube_inject_companions(frame, 
+	# 									psf_norma, 
+	# 									ang, 
+	# 									-flux, 
+	# 									r,
+	#                                     plsc=None, 
+	#                                     n_branches=1, 
+	#                                     theta=theta, imlib='vip-fft',
+	#                                     interpolation='lanczos4', transmission=None,
+	#                                     radial_gradient=False, full_output=False,
+	#                                     verbose=False, nproc=1)
 
-	# frame_negfc = inject_fcs_cube_mod(frame, 
-	# 								  psf_norma, 
-	# 								  ang, 
-	# 								  -flux, 
-	# 								  r, 
-	# 								  theta, 
-	# 								  n_branches=1)
+	frame_negfc = inject_fcs_cube_mod(frame, 
+									  psf_norma, 
+									  ang, 
+									  -flux, 
+									  r, 
+									  theta, 
+									  n_branches=1)
 	
 
 	centy_fr, centx_fr = frame_center(frame_negfc)
@@ -58,7 +58,7 @@ def chisquare_mod(modelParameters, frame, ang, pixel, psf_norma, fwhm, fmerit):
 	posy = r * np.sin(np.deg2rad(theta)-np.deg2rad(ang)) + centy_fr
 	posx = r * np.cos(np.deg2rad(theta)-np.deg2rad(ang)) + centx_fr
 
-	indices = disk((posy, posx), radius=fwhm)
+	indices = disk((posy, posx), radius=fwhm*2)
 	yy, xx = indices
 	values = frame_negfc[yy, xx].ravel()    
 	

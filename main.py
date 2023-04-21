@@ -52,10 +52,10 @@ def shift_and_crop_cube(cube, n_jobs=1, shift_x=-1, shift_y=-1):
 	shifted_cube = np.array(shifted_cube)
 
 	y_center, x_center = frame_center(shifted_cube[0])
-
 	ycen   = y_center-0.5
 	xcen   = x_center-0.5
 	newdim = shifted_cube.shape[-1]-1
+
 	shifted_cube = cube_crop_frames(shifted_cube,
 	                                newdim,
 	                                xy=[int(ycen), int(xcen)], 
@@ -80,10 +80,11 @@ def fit_and_crop(cube, use_pos=0, n_jobs=1):
 	:rtype: {numpy.ndarray}
 	"""
 	# Fit a 2-dim Gaussian to the cropped PSF image 
+
 	model_2d = fit_2dgaussian(cube[use_pos, :-1, :-1], 
 							  crop=True, 
 							  cropsize=30, 
-							  debug=True, 
+							  debug=False, 
 							  full_output=True)
 
 	fwhm_sphere = np.mean([model_2d.fwhm_y, model_2d.fwhm_x]) 
@@ -93,7 +94,7 @@ def fit_and_crop(cube, use_pos=0, n_jobs=1):
 	                                               fwhm_sphere, 
 	                                               model='gauss',
 	                                               nproc=n_jobs, 
-	                                               subi_size=7,
+	                                               subi_size=8,
 	                                               negative=False, #?
 	                                               full_output=True, 
 	                                               debug=False,
@@ -146,7 +147,7 @@ def fit_gaussian_2d(image, fwhmx=4, fwhmy=4, plot=False, dpi=100, text_box=''):
 		plot_to_compare([image, fit(x, y)], ['Original', 'Model'], dpi=dpi, text_box=text_box)
 	return fwhm_y, fwhm_x, mean_y, mean_x
 
-def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
+def recenter_cube(cube, ref_frame, fwhm_sphere=4, pos_y=None, pos_x=None, subi_size=7, n_jobs=1):
 	"""Recenter a cube of frames based on a frame reference
 	
 	Using the estimated FWHM we fit gaussian models to center a sequence of frames 
@@ -163,7 +164,10 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
 	"""
 	n_frames, sizey, sizex = cube.shape
 	fwhm 		 = np.ones(n_frames) * fwhm_sphere
-	pos_y, pos_x = frame_center(ref_frame)
+	
+	if pos_y is None or pos_x is None:
+		pos_y, pos_x = frame_center(ref_frame)
+	
 	psf_rec 	 = np.empty_like(cube) # template for the reconstruction
 
 	# ================================================================================================================
@@ -176,7 +180,7 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, subi_size=7, n_jobs=1):
 			# [Only for visualization] Negative gaussian fit
 			sub_to_plot = sub
 			sub_image = -sub + np.abs(np.min(-sub))
-			plot_to_compare([sub_to_plot, sub_image], ['Original', 'Negative'])
+			plot_to_compare([su_to_plot, sub_image], ['Original', 'Negative'])
 
 		_, _, y_i, x_i = fit_gaussian_2d(sub, fwhmx=fwhm, fwhmy=fwhm)
 		y_i += y1
