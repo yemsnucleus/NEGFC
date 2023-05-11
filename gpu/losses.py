@@ -22,4 +22,5 @@ def custom_loss(adi_fake, radius, rot_theta, fwhm=4):
     # use the mask to get non-zero values
     non_zero_values = tf.boolean_mask(objetive_reg, mask)
     
-    return tf.math.log(tf.math.reduce_std(non_zero_values))
+    abs_std = tf.abs(tf.math.reduce_std(non_zero_values))
+    return abs_std
