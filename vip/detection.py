@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+from vip_hci.metrics.snr_source     import snr
 from astropy.stats 					import sigma_clipped_stats, gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 from loss	 						import chisquare_mod, inject_fcs_cube_mod
 from plottools 						import plot_to_compare, plot_detection
