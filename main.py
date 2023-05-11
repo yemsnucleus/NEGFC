@@ -18,9 +18,9 @@ from vip_hci.fm 				 	import normalize_psf
 from vip_hci.var.shapes				import get_square
 from vip_hci.fits 					import open_fits
 
-from plottools					import plot_to_compare, plot_cube, plot_detection, plot_cube_multiband 
-from detection 					import get_intersting_coords, optimize_params
-from pca 						import reduce_pca
+from vip.plottools					import plot_to_compare, plot_cube, plot_detection, plot_cube_multiband 
+from vip.detection 					import get_intersting_coords, optimize_params
+from vip.pca 						import reduce_pca
 
 from astropy.stats				import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 

@@ -1,4 +1,5 @@
+*.ipynb_checkpoints
 *.png
+*.gif
 __pycache__/
-*.ipynb
-red.py
+data/*
