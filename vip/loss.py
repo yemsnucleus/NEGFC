@@ -1,6 +1,6 @@
 import numpy as np
 
-from plottools 						import plot_optimization, plot_mask, plot_to_compare
+from .plottools 						import plot_optimization, plot_mask, plot_to_compare
 from vip_hci.preproc.recentering	import frame_shift, frame_center
 from skimage.draw					import disk
 
@@ -86,52 +86,52 @@ def chisquare_mod(modelParameters, frame, ang, pixel, psf_norma, fwhm, fmerit):
 	return loss
 
 def inject_fcs_cube_mod(frame, template, angle, flux, radius, theta, n_branches=1, imlib='opencv'):
-	"""Inject a template image into a frame
-	
-	Template usually is a PSF and the frame cames from the cube.
-	:param frame: Frame where we are going to inject the template
-	:type frame: numpy.ndarray
-	:param template: Template or patch to be injected into the frame
-	:type template: numpy.ndarray
-	:param angle: Rotation angle of the frame 
-	:type angle: number, float
-	:param flux: Flux guess of the companion
-	:type flux: number, float
-	:param radius: Distance between the planet and the companion
-	:type radius: number, float
-	:param theta: Angle in degrees between the star and the companion 
-	:type theta: number, float
-	:param n_branches: [description], defaults to 1
-	:type n_branches: number, optional
-	:param imlib: image library to work with, defaults to 'opencv'
-	:type imlib: str, optional
-	:returns: [description]
-	:rtype: {[type]}
-	"""
-	ceny, cenx = frame_center(frame)
-	size_psf = template.shape[0]
+    """Inject a template image into a frame
 
-	# inyect the PSF template to the center of the image
-	frame_copy = np.zeros_like(frame, dtype=np.float64)
-	w = int(np.floor(size_psf/2.)) # width
-	frame_copy[int(ceny-w):int(ceny+w+1), int(cenx-w):int(cenx+w+1)] = template
+    Template usually is a PSF and the frame cames from the cube.
+    :param frame: Frame where we are going to inject the template
+    :type frame: numpy.ndarray
+    :param template: Template or patch to be injected into the frame
+    :type template: numpy.ndarray
+    :param angle: Rotation angle of the frame 
+    :type angle: number, float
+    :param flux: Flux guess of the companion
+    :type flux: number, float
+    :param radius: Distance between the planet and the companion
+    :type radius: number, float
+    :param theta: Angle in degrees between the star and the companion 
+    :type theta: number, float
+    :param n_branches: [description], defaults to 1
+    :type n_branches: number, optional
+    :param imlib: image library to work with, defaults to 'opencv'
+    :type imlib: str, optional
+    :returns: [description]
+    :rtype: {[type]}
+    """
+    ceny, cenx = frame_center(frame)
+    size_psf = template.shape[0]
 
-	# Here we insert many companions around the center of the image. 
-	# Since we already know an approximated set of coordinates of the companions,
-	# we do not need to inject more than one fake companion around the center of the image. 
-	# That means in we'll only use the theta angle for injecting (i.e., branch = 0)	
-	tmp = np.zeros_like(frame)
-	for branch in range(n_branches):
-		ang = (branch * 2 * np.pi / n_branches) + np.deg2rad(theta)
-		y = radius * np.sin(ang - np.deg2rad(angle))
-		x = radius * np.cos(ang - np.deg2rad(angle))
-		# we shape the normed PSF to the companion flux
-		img_shifted = frame_shift(frame_copy, x, y, imlib=imlib)
-		tmp += img_shifted*flux
-		# plot_to_compare([img_shifted, tmp], ['Shifted PSF', 'Shifted and scaled PSF'])
+    # inyect the PSF template to the center of the image
+    frame_copy = np.zeros_like(frame, dtype=np.float64)
+    w = int(np.floor(size_psf/2.)) # width
+    frame_copy[int(ceny-w):int(ceny+w+1), int(cenx-w):int(cenx+w+1)] = template
+
+    # Here we insert many companions around the center of the image. 
+    # Since we already know an approximated set of coordinates of the companions,
+    # we do not need to inject more than one fake companion around the center of the image. 
+    # That means in we'll only use the theta angle for injecting (i.e., branch = 0)	
+    tmp = np.zeros_like(frame)
+    for branch in range(n_branches):
+        ang = (branch * 2 * np.pi / n_branches) + np.deg2rad(theta)
+        y = radius * np.sin(ang - np.deg2rad(angle)) 
+        x = radius * np.cos(ang - np.deg2rad(angle)) 
+        # we shape the normed PSF to the companion flux
+        img_shifted = frame_shift(frame_copy, x, y, imlib=imlib)
+        tmp += img_shifted*flux
+        # plot_to_compare([img_shifted, tmp], ['Shifted PSF', 'Shifted and scaled PSF'])
 
 
-	frame_out = frame + tmp
-	# plot_to_compare([frame, frame_out], ['Frame', 'Frame + FC'])
-	
-	return frame_out   
+    frame_out = frame + tmp
+    # plot_to_compare([frame, frame_out], ['Frame', 'Frame + FC'])
+
+    return frame_out   

@@ -4,7 +4,7 @@ from vip_hci.var.shapes			import get_square, prepare_matrix
 from vip_hci.preproc.parangles	import check_pa_vector
 from vip_hci.preproc.derotation import cube_derotate
 
-from plottools 					import plot_to_compare
+from .plottools 					import plot_to_compare
 
 from sklearn.decomposition import PCA
 
