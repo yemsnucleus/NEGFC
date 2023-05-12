@@ -3,7 +3,7 @@ import tensorflow as tf
 from .fake_comp import create_circular_mask
 
 @tf.function
-def custom_loss(adi_fake, radius, rot_theta, fwhm=4):
+def custom_loss(adi_fake, radius, rot_theta, fwhm=4, std=True):
     w = tf.shape(adi_fake)[-2]
     h = tf.shape(adi_fake)[-1]
     
@@ -17,10 +17,13 @@ def custom_loss(adi_fake, radius, rot_theta, fwhm=4):
     
     objetive_reg =  adi_fake * mask
     objetive_reg = tf.reshape(objetive_reg, [w*h])   
-    # get a boolean mask for non-zero values
-    mask = tf.not_equal(objetive_reg, 0.)
-    # use the mask to get non-zero values
-    non_zero_values = tf.boolean_mask(objetive_reg, mask)
     
-    abs_std = tf.pow(tf.math.reduce_std(non_zero_values), 2)
-    return abs_std
+    if std:
+        # get a boolean mask for non-zero values
+        mask = tf.not_equal(objetive_reg, 0.)
+        # use the mask to get non-zero values
+        non_zero_values = tf.boolean_mask(objetive_reg, mask)
+        loss = tf.pow(tf.math.reduce_std(non_zero_values), 2)
+    else:
+        loss = tf.pow(tf.math.reduce_sum(objetive_reg), 2)
+    return loss

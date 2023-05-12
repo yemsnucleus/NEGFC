@@ -18,15 +18,15 @@ def get_dataset(cube, psf, rot_ang, lambda_ch=0, psf_pos=0, normalize=0):
         
     if normalize == 1:
         print('MIN MAX SCALER')
-        min_val = tf.expand_dims(tf.expand_dims(tf.reduce_min(cube[lambda_ch], axis=[1, 2]), 1), 2)
-        max_val = tf.expand_dims(tf.expand_dims(tf.reduce_max(cube[lambda_ch], axis=[1, 2]), 1), 2)
+        min_val = tf.reduce_min(cube[lambda_ch])
+        max_val = tf.reduce_max(cube[lambda_ch])
         cube_inp = (cube[lambda_ch] - min_val)/(max_val - min_val)
         recovery = (min_val, max_val)
 
     if normalize == 2:
         print('Z-SCORE')
-        mean_val = tf.expand_dims(tf.expand_dims(tf.math.reduce_mean(cube[lambda_ch], axis=[1, 2]), 1), 2)
-        std_val = tf.expand_dims(tf.expand_dims(tf.math.reduce_std(cube[lambda_ch], axis=[1, 2]), 1), 2)
+        mean_val = tf.math.reduce_mean(cube[lambda_ch])
+        std_val = tf.math.reduce_std(cube[lambda_ch])
         cube_inp = (cube[lambda_ch] - mean_val)/std_val
         recovery = (mean_val, std_val)
 
