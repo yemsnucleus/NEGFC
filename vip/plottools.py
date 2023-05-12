@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import tensorflow as tf
 import numpy as np
 import os
 
@@ -310,11 +311,11 @@ def plot_optimization(frame, frame_negfc, msg='', root='./figures/negfc_opt/'):
 
     files = os.listdir(root)
     if len(files) == 0:
-      fig.savefig(root+'0.png')
+        fig.savefig(root+'0.png')
     else:
-      numbers = [int(file.split('.png')[0]) for file in files]
-      numbers = np.sort(numbers)
-      fig.savefig(root+'{}.png'.format(numbers[-1]+1))
+        numbers = [int(file.split('.png')[0]) for file in files]
+        numbers = np.sort(numbers)
+        fig.savefig(root+'{}.png'.format(numbers[-1]+1))
 
 def create_circular_mask(h, w, center=None, radius=None):
     if center is None: # use the middle of the image
@@ -348,3 +349,28 @@ def plot_region(frame, posx, posy, xx=None, yy=None):
     if xx is not None and yy is not None:
         plt.scatter(xx, yy, marker='x', color='yellow', s=0.1, alpha=0.5)
     plt.show()
+
+def get_objective_region(cube, x, y, rot_ang, fwhm):
+    
+    w = tf.shape(cube)[-2]
+    h = tf.shape(cube)[-1] 
+    
+    mask = create_circular_mask(w, h, center=(x, y), radius=fwhm)
+    mask = tf.expand_dims(mask, 0)
+    
+    
+    if tf.rank(cube) > 2:
+        nframes = tf.shape(cube)[0]
+        mask = tf.tile(mask, [nframes, 1, 1])
+        cube_rot = rotate_cube(cube, rot_ang=rot_ang, derotate='tf')
+        cube_rot = tf.squeeze(cube_rot)
+        objetive_reg =  cube_rot * mask
+        objetive_reg = tf.reshape(objetive_reg, [nframes, w, h])
+        assert objetive_reg.shape == cube.shape
+    
+    else:
+        cube_rot = cube
+        objetive_reg =  cube_rot * mask
+
+    return  objetive_reg    
+    

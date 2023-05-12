@@ -292,23 +292,24 @@ def create_circular_mask(height, width, center=None, radius=None):
     mask = tf.where(dist_from_center <= radius, 1.0, 0.0)
     return mask
 
-def get_objective_region(cube, x, y, rot_ang, fwhm, nfwhm=2):
-    nframes = tf.shape(cube)[0] 
-    w = tf.shape(cube)[1]
-    h = tf.shape(cube)[2] 
+def get_objective_region(cube, x, y, rot_ang, fwhm):
     
-    mask = create_circular_mask(w, h, center=(x, y), radius=nfwhm*fwhm)
+    w = tf.shape(cube)[-2]
+    h = tf.shape(cube)[-1] 
     
+    mask = create_circular_mask(w, h, center=(x, y), radius=fwhm)
     mask = tf.expand_dims(mask, 0)
-    mask = tf.tile(mask, [nframes, 1, 1])
     
-    if nframes > 1:
+    
+    if tf.rank(cube) > 2:
+        nframes = tf.shape(cube)[0]
+        mask = tf.tile(mask, [nframes, 1, 1])
         cube_rot = rotate_cube(cube, rot_ang=rot_ang, derotate='tf')
         cube_rot = tf.squeeze(cube_rot)
+        objetive_reg =  cube_rot * mask
+        objetive_reg = tf.reshape(objetive_reg, [nframes, w, h])   
     else:
         cube_rot = cube
-        
-    objetive_reg =  cube_rot * mask
-    objetive_reg = tf.reshape(objetive_reg, [nframes, w, h])
-    assert objetive_reg.shape == cube.shape
-    return  objetive_reg
+        objetive_reg =  cube_rot * mask
+
+    return  objetive_reg   
