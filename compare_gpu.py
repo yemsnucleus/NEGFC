@@ -4,6 +4,7 @@ import tensorflow_probability as tfp
 import pandas as pd
 import numpy as np
 import time
+import sys
 import os
 
 from gpu.mcmc import run_chain, run_chain_only_flux
@@ -38,23 +39,28 @@ def get_data(root='./data/HCI', lambda_ch=0, psf_pos=0):
             'psf':psf,
             'rot_angles': rot_ang}
 
-def run():
-    
+def run(root='./data/DHTau', backlog_name='backlog'):
+    os.makedirs('./results/gpu/', exist_ok=True)
+
+    df_backlog = pd.DataFrame(columns= ['step', 'time', 'y', 'x', 'flux', 
+                                    'std_x', 'std_y', 'std_flux', 
+                                    'med_x', 'med_y', 'med_flux'])
+
     backlog = []
     lambda_ch = 0
     psf_pos = 0
     
     # ========= NORMALIZE =========
     t0 = time.time()
-    root = './data/DHTau'
     data = get_data(root)
     results = tfnegfc.adjust_gaussian(data['psf'][lambda_ch, psf_pos])
     fwhm_sphere  = tf.reduce_mean(results['fwhm'])
     centered_psf = tfnegfc.center_cube(data['psf'][lambda_ch], fwhm_sphere)
     normalized_psf = tfnegfc.normalize_psf(centered_psf, fwhm=fwhm_sphere)
     t1 = time.time()
-    backlog.append(['psf norm', t1-t0, '', '', ''])
-    
+    df_backlog.loc[len(df_backlog.index)] = ['psf_norm', t1-t0, '', '', '', '', '', '', '', '', '']
+    df_backlog.to_csv('./results/gpu/{}.csv'.format(backlog_name), index=False)
+
     # =========== PCA + ADI =========
     t0 = time.time()
     adi_image = tfnegfc.apply_adi(data['cube'][lambda_ch], 
@@ -63,8 +69,9 @@ def run():
                                   ncomp=1, 
                                   derotate='tf')
     t1 = time.time()
-    backlog.append(['pca+adi', t1-t0, '', '', ''])
-    
+    df_backlog.loc[len(df_backlog.index)] = ['pca+adi', t1-t0, '', '', '', '', '', '', '', '', '']
+    df_backlog.to_csv('./results/gpu/{}.csv'.format(backlog_name), index=False)
+
     # ============ DETECTION =========
     t0 = time.time()
     table = tfnegfc.get_coords(adi_image.numpy(), 
@@ -72,15 +79,17 @@ def run():
                                bkg_sigma=5, 
                                cut_size=10)
     t1 = time.time()
-    backlog.append(['detection', 
-                t1-t0, 
-                table.iloc[0]['y'], 
-                table.iloc[0]['x'], 
-                table.iloc[0]['flux']])
-    
+    df_backlog.loc[len(df_backlog.index)] = ['detection', 
+                                              t1-t0, 
+                                              table.iloc[0]['y'], 
+                                              table.iloc[0]['x'],
+                                              table.iloc[0]['flux'], 
+                                              '', '', '', 
+                                              '', '', '']
+    df_backlog.to_csv('./results/gpu/{}.csv'.format(backlog_name), index=False)
     # ======= OPTIMIZATION ==========
     
-    nfwhm = 4
+    nfwhm = 2
     custom_loss_w = wrapper(custom_loss, 
                             fwhm=table.iloc[0]['fwhm_mean']*nfwhm, 
                             std=False)
@@ -94,54 +103,72 @@ def run():
                   y_init=table.iloc[0]['y'], 
                   cube=data['cube'])    
 
-    model.compile(loss_fn=custom_loss_w, optimizer=Adam(5))
+    model.compile(loss_fn=custom_loss_w, optimizer=Adam(1))
     
     
     es = tf.keras.callbacks.EarlyStopping(
-        monitor='loss', patience=30,
+        monitor='loss', patience=20,
     )
 
-    hist = model.fit(dataset, epochs=10000, verbose=1, callbacks=[es])
+    hist = model.fit(dataset, epochs=100, verbose=1, callbacks=[es])
     
     
     x_firstguess = model.trainable_variables[0]
     y_firstguess = model.trainable_variables[1]
     flux_firstguess = model.trainable_variables[2]
     flux_firstguess = flux_firstguess[0]
+
     t1 = time.time()
-    backlog.append(['simplex', 
-                t1-t0, 
-                y_firstguess, 
-                x_firstguess, 
-                flux_firstguess])
-    
+    df_backlog.loc[len(df_backlog.index)] = ['fguess', 
+                                              t1-t0, 
+                                              y_firstguess, 
+                                              x_firstguess,
+                                              flux_firstguess, 
+                                              '', '', '', 
+                                              '', '', '']
+    df_backlog.to_csv('./results/gpu/{}.csv'.format(backlog_name), index=False)
+
     # ======= MCMC ==========
-    init_state = [flux_firstguess]
-    results = run_chain_only_flux(init_state, 
-                                  x_firstguess, 
-                                  y_firstguess, 
-                                  table.iloc[0]['fwhm_mean']*nfwhm//2, 
-                                  data['cube'][lambda_ch], 
-                                  normalized_psf[0], 
-                                  data['rot_angles'], 
-                                  num_results=10000)
+    init_state = [x_firstguess.numpy()[0], y_firstguess.numpy()[0], flux_firstguess]
+    results = run_chain(init_state, 
+                        table.iloc[0]['fwhm_mean']*nfwhm, 
+                        data['cube'][lambda_ch], 
+                        normalized_psf[0], 
+                        data['rot_angles'], 
+                        num_results=10000)
+
     t1 = time.time()
     samples = [r for r in results.all_states]
     opt_values = [np.mean(samples_chain) for samples_chain in samples]
+    opt_values_std = [np.std(samples_chain) for samples_chain in samples]
+    opt_values_med = [np.median(samples_chain) for samples_chain in samples]
 
-    backlog.append(['mcmc', 
-                    t1-t0, 
-                    opt_values[1], 
-                    opt_values[0], 
-                    opt_values[2]])
+    t1 = time.time()
+    df_backlog.loc[len(df_backlog.index)] = ['mcmc', 
+                                              t1-t0, 
+                                              opt_values[1], 
+                                              opt_values[0],
+                                              opt_values[2], 
+                                              opt_values_std[1], 
+                                              opt_values_std[0],
+                                              opt_values_std[2], 
+                                              opt_values_med[1], 
+                                              opt_values_med[0],
+                                              opt_values_med[2]]
+    df_backlog.to_csv('./results/gpu/{}.csv'.format(backlog_name), index=False)
     
-    df = pd.DataFrame(np.array(backlog), 
-                      columns= ['step', 'time', 'y', 'x', 'flux'])
-    df.to_csv('./results/tf/perform.csv')
     
-    
-run()
-    
+if __name__ == '__main__':
+
+    root_data = sys.argv[1]
+    backlog_name = sys.argv[2]
+
+    print(':'*10)
+    print('[INFO] Script started!')
+    print('[INFO] Loading {}'.format(root_data))
+    print('[INFO] Backlogs stored at /results/gpu/{}.csv'.format(backlog_name))
+    print(':'*10)
+    run(root_data, backlog_name)
     
     
     
