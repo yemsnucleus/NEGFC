@@ -1,6 +1,8 @@
+import multiprocessing as mp
 import pandas as pd
 import numpy as np 
 import time
+import sys
 import os
 
 from vip_hci.fm.negfc_mcmc import mcmc_negfc_sampling
@@ -56,18 +58,22 @@ def modify_shape_and_center(img, shift_h=1, shift_w=1):
 
     return new_img
 
-def run():
-    
+def run(root='./data/DHTau', backlog_name='backlog'):
+    os.makedirs('./results/cpu/', exist_ok=True)
+    df_backlog = pd.DataFrame(columns= ['step', 'time', 'y', 'x', 'flux', 
+                                        'std_x', 'std_y', 'std_flux', 
+                                        'med_x', 'med_y', 'med_flux'])
+
     backlog = []
-    
     lambda_ch = 0
     psf_pos = 0
 
+    # ===========================================
+    # ============ NORMALIZATION ================
+    # =========================================== 
     t0 = time.time()
-    root = './data/HCI'
-    data = get_data(root)
     
-
+    data = get_data(root)
     if data['psf'].shape[-1] % 2 == 0:
         psf_even = []
         for psf_lambda in data['psf']:
@@ -81,7 +87,6 @@ def run():
     ceny, cenx = frame_center(single_psf)
     imside = single_psf.shape[0]
     cropsize = 30
-
     fit = fit_2dgaussian(single_psf, 
                          crop=True, 
                          cropsize=30, 
@@ -110,8 +115,12 @@ def run():
                                          full_output=True, 
                                          verbose=True) 
     t1 = time.time()
-    backlog.append(['psf norm', t1-t0, '', '', ''])
-    
+    df_backlog.loc[len(df_backlog.index)] = ['psf_norm', t1-t0, '', '', '', '', '', '', '', '', '']
+    df_backlog.to_csv('./results/vip/{}.csv'.format(backlog_name), index=False)
+
+    # ===========================================
+    # ====================== PCA ================
+    # =========================================== 
     t0 = time.time()
     fr_pca = pca(data['cube'][lambda_ch], 
                  data['rot_angles'],
@@ -119,8 +128,12 @@ def run():
                  full_output=False,
                  imlib='opencv')
     t1 = time.time()
-    backlog.append(['pca+adi', t1-t0, '', '', ''])
-    
+    df_backlog.loc[len(df_backlog.index)] = ['pca+adi', t1-t0, '', '', '', '', '', '', '', '', '']
+    df_backlog.to_csv('./results/vip/{}.csv'.format(backlog_name), index=False)
+
+    # ===========================================
+    # ================ DETECTION ================
+    # =========================================== 
     t0 = time.time()
     res = detection(fr_pca, 
                     fwhm=fwhm[psf_pos], 
@@ -131,14 +144,17 @@ def run():
                     plot=False, 
                     verbose=True, 
                     full_output=True)
-
     t1 = time.time()
-    backlog.append(['detection', 
-                    t1-t0, 
-                    res.iloc[0]['y'], 
-                    res.iloc[0]['x'], 
-                    ''])
-    
+    df_backlog.loc[len(df_backlog.index)] = ['detection', 
+                                             t1-t0, 
+                                             res.iloc[0]['y'], 
+                                             res.iloc[0]['x'], 
+                                             '', '', '', '', '', '', '']
+    df_backlog.to_csv('./results/vip/{}.csv'.format(backlog_name), index=False)
+
+    # ===========================================
+    # =============== FIRST GUESS ===============
+    # =========================================== 
     t0 = time.time()
     results = firstguess(data['cube'][lambda_ch], 
                          angs=data['rot_angles'],       
@@ -148,14 +164,12 @@ def run():
                          imlib='opencv',
                          fwhm=fwhm[psf_pos],
                          simplex=True,
-                         annulus_width=4*fwhm[psf_pos],
+                         annulus_width=2*fwhm[psf_pos],
                          aperture_radius=2,
                          algo_options={
-                             'nproc': 32,
+                             'nproc': mp.cpu_count()//2,
                              'imlib': 'opencv'
                          })    
-
-
     radius_fguess = results[0][0]
     theta_fguess  = results[1][0]
     flux_fguess   = results[2][0]
@@ -165,43 +179,17 @@ def run():
     posx = radius_fguess * np.cos(np.deg2rad(theta_fguess)) + centx_fr
 
     t1 = time.time()
-    backlog.append(['simplex', 
-                    t1-t0, 
-                    posy, 
-                    posx, 
-                    flux_fguess])
-    
-    t0 = time.time()
-    obs_params = {'psfn': psf_norm, 'fwhm': 4.}
+    df_backlog.loc[len(df_backlog.index)] = ['fguess', 
+                                             t1-t0, 
+                                             posy, 
+                                             posx, 
+                                             flux_fguess, '', '', '', '', '', '']
+    df_backlog.to_csv('./results/vip/{}.csv'.format(backlog_name), index=False)
 
-    algo_params = {'algo': pca_annulus,
-    #                'ncomp': 1,
-               'annulus_width': obs_params['fwhm']*2,
-               'svd_mode': 'lapack',
-               'imlib': 'opencv',
-               'interpolation': 'lanczos4'}
-
-    mu_sigma=True
-    aperture_radius=2
-
-    negfc_params = {'mu_sigma': mu_sigma,
-                'aperture_radius': aperture_radius}
-
-    nwalkers, itermin, itermax = (100, 200, 500)
-
-    mcmc_params = {'nwalkers': nwalkers,
-               'niteration_min': itermin,
-               'niteration_limit': itermax,
-               'bounds': None,
-               'nproc': cpu_count()//2}
-
-    conv_test, ac_c, ac_count_thr, check_maxgap = ('ac', 50, 1, 50)
-
-    conv_params = {'conv_test': conv_test,
-               'ac_c': ac_c,
-               'ac_count_thr': ac_count_thr,
-               'check_maxgap': check_maxgap}
-    
+    # ===========================================
+    # ================== MCMC ===================
+    # =========================================== 
+    t0 = time.time()    
     initial_state = [radius_fguess, theta_fguess, flux_fguess]
     chain = mcmc_negfc_sampling(data['cube'][lambda_ch], 
                                 data['rot_angles'],  
@@ -215,23 +203,46 @@ def run():
     radius_star = np.mean(xm[:, 0])
     theta_star  = np.mean(xm[:, 1])
     flux_star   = np.mean(xm[:, 2])
+    
+    radius_std = np.std(xm[:, 0])
+    theta_std  = np.std(xm[:, 1])
+    flux_std   = np.std(xm[:, 2])
+
+    radius_med = np.median(xm[:, 0])
+    theta_med  = np.median(xm[:, 1])
+    flux_med   = np.median(xm[:, 2])
 
     centy_fr, centx_fr = frame_center(cube[0])
     posy_star = radius_star * np.sin(np.deg2rad(theta_star)) + centy_fr
     posx_star = radius_star * np.cos(np.deg2rad(theta_star)) + centx_fr
 
-    t1 = time.time()
-    backlog.append(['mcmc', 
-                    t1-t0, 
-                    posy_star, 
-                    posx_star, 
-                    flux_star])
+    t1 = time.time()    
+    df_backlog.loc[len(df_backlog.index)] = ['mcmc', 
+                                             t1-t0, 
+                                             posy_star, 
+                                             posx_star, 
+                                             flux_star,
+                                             radius_std,
+                                             theta_std,
+                                             flux_std,
+                                             radius_med,
+                                             theta_med,
+                                             flux_med]
+
+    df_backlog.to_csv('./results/vip/{}.csv'.format(backlog_name), index=False)
     
-    df = pd.DataFrame(np.array(backlog), 
-                      columns= ['step', 'time', 'y', 'x', 'flux'])
-    df.to_csv('./results/vip/perform.csv')
-    
-run()
+
+if __name__ == '__main__':
+
+    root_data = sys.argv[1]
+    backlog_name = sys.argv[2]
+
+    print(':'*10)
+    print('[INFO] Script started!')
+    print('[INFO] Loading {}'.format(root_data))
+    print('[INFO] Backlogs stored at /results/cpu/{}.csv'.format(backlog_name))
+    print(':'*10)
+    run(root_data, backlog_name)
 
 
 
