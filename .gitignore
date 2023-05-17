@@ -3,3 +3,4 @@
 *.gif
 __pycache__/
 data/*
+results/

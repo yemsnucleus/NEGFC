@@ -30,9 +30,8 @@ def get_dataset(xy_pos, flux, cube, psf, rot_ang, lambda_ch=0, psf_pos=0):
                                                   psf[None,...], 
                                                   rot_ang[None,...]))
     dataset = dataset.map(format_input)
-    
     return dataset.batch(1)
- 
+
 def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1):
     cube_route = os.path.join(root, 'center_im.fits')
     cube  = fits.getdata(cube_route, ext=0)
@@ -77,7 +76,3 @@ def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1):
                           psf_pos=psf_pos)
     
     return dataset, cube[lambda_ch].shape, xy_cords, init_flux
-
-
-
-
