@@ -188,6 +188,7 @@ def rotate_cube(cube, rot_ang, derotate='tf', verbose=0):
         res_derot = tfa.image.rotate(cube, -rot_ang_deg, 
                                      interpolation='nearest', 
                                      fill_mode='reflect')
+
     else:
         cores = multiprocessing.cpu_count()-2
         if verbose: print(f'Using VIP on {cores} cores')

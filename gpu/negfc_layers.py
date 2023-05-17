@@ -1,6 +1,7 @@
 import tensorflow_probability as tfp
 import tensorflow_addons as tfa
 import tensorflow as tf 
+import multiprocessing as mp
 import numpy as np
 
 from tensorflow.keras.layers import Layer
@@ -136,3 +137,81 @@ class AngularDifferentialImaging(Layer):
                               (cube, rot_angles), dtype=(tf.float32))
 
         return collapsed
+    
+    
+class MoveScalePSF(Layer):
+    def __init__(self, init_xy, init_f, **kwargs):
+        super(MoveScalePSF, self).__init__(**kwargs)
+        self.init_x  = tf.cast(init_xy[:, 0], tf.float32)
+        self.init_y  = tf.cast(init_xy[:, 1], tf.float32)
+        self.init_f  = tf.cast(init_f, tf.float32)
+        
+        self.n_candidates = tf.shape(self.init_x)[0]
+        
+    def build(self, input_shape):  # Create the state of the layer (weights)
+        init_x = tf.constant(self.init_x, 
+                             shape=(self.n_candidates, 1), 
+                             dtype=tf.float32)
+        self.x = tf.Variable(initial_value=init_x,
+                             trainable=True, 
+                             name='xcoord')
+
+        init_y = tf.constant(self.init_y, 
+                             shape=(self.n_candidates, 1), 
+                             dtype=tf.float32)
+        self.y = tf.Variable(initial_value=init_y,
+                             trainable=True, 
+                             name='ycoord')
+
+        init_f = tf.constant(self.init_f, 
+                             shape=(self.n_candidates, 1), 
+                             dtype=tf.float32)
+        self.flux = tf.Variable(initial_value=init_f,
+                                trainable=True, 
+                                name='flux')
+    @tf.function
+    def call(self, inputs):
+        n_frames = tf.shape(inputs['rot_angles'])[1]
+        width    = tf.cast(tf.shape(inputs['psf'])[-2], dtype=tf.float32)
+        height   = tf.cast(tf.shape(inputs['psf'])[-1], dtype=tf.float32)
+        
+        width_s  = width/tf.constant(2., dtype=tf.float32)
+        height_s = height/tf.constant(2., dtype=tf.float32)
+        
+        x_c = self.x - width_s # origin in the middle of the frame 
+        y_c = self.y - height_s # origin in the middle of the frame
+        
+        radius = tf.sqrt(tf.pow(x_c, 2)+tf.pow(y_c, 2))
+        
+        angle = tf.atan2(y_c, x_c) # radians
+        angle = angle/tf.constant(np.pi)*180.  # degrees
+        theta = tf.math.mod(angle, 360.) # bound up to 1 circumference  
+            
+        rot_theta = theta - inputs['rot_angles'] # rotate angles 
+        rot_theta = tf.experimental.numpy.deg2rad(rot_theta)
+        
+        x_s = tf.multiply(radius, tf.cos(rot_theta)) #+ width_s
+        y_s = tf.multiply(radius, tf.sin(rot_theta)) #+ height_s
+
+        shift_indices = tf.stack([x_s, y_s], axis=2)
+        
+        cube_patch = tf.expand_dims(inputs['psf'], 1)
+        cube_patch = tf.tile(cube_patch, [self.n_candidates, n_frames, 1, 1])
+        
+        def fn(cube, xy_translations):
+            return tfa.image.translate(tf.expand_dims(cube, -1), xy_translations)
+            
+        
+        patch = tf.map_fn(lambda x: fn(x[0], x[1]), 
+                             (cube_patch, shift_indices),
+                              fn_output_signature=(tf.float32),
+                              parallel_iterations=mp.cpu_count()//2,
+                         name='translate')      
+        
+        fluxes = tf.tile(self.flux, [1, n_frames])
+        fluxes = tf.reshape(fluxes, [self.n_candidates, n_frames, 1, 1, 1])
+        
+        partial_cords = tf.stack([self.x, self.y], 1)
+        partial_cords = tf.reshape(partial_cords, [self.n_candidates, 2])
+        
+        return tf.multiply(patch, fluxes), partial_cords
