@@ -34,5 +34,6 @@ def get_dataset(cube, psf, rot_ang, lambda_ch=0, psf_pos=0, normalize=0):
                                                   psf[None,...], 
                                                   rot_ang[None,...]))
     dataset = dataset.map(format_input)
+    
     return dataset.batch(1), recovery
  
