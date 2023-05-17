@@ -199,13 +199,16 @@ def rotate_cube(cube, rot_ang, derotate='tf', verbose=0):
         
     return res_derot
 
-def apply_adi(cube, rot_ang, out_size, ncomp=1, derotate='tf'):
+def apply_adi(cube, rot_ang, out_size, ncomp=1, derotate='tf', return_cube=False):
     res, cube_rec = pca_tf(cube, out_size, ncomp=ncomp)
     res_derot = rotate_cube(res, rot_ang, derotate=derotate)
     res_derot = tf.reshape(res_derot, [tf.shape(cube)[0], tf.shape(cube)[1], tf.shape(cube)[2]])
     median = tfp.stats.percentile(res_derot, 50.0, 
                                   interpolation='midpoint', axis=0)
     median = tf.reshape(median, [tf.shape(cube)[1], tf.shape(cube)[2]])
+    
+    if return_cube:
+        return median, res_derot
     return median
 
 def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10):

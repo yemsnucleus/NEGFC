@@ -211,6 +211,7 @@ def run():
                                 initial_state=initial_state,
                                 display=True, verbosity=1, 
                                 save=False, output_dir='./')    
+    xm = np.mean(chain, 0)
     radius_star = np.mean(xm[:, 0])
     theta_star  = np.mean(xm[:, 1])
     flux_star   = np.mean(xm[:, 2])

@@ -46,7 +46,7 @@ def run():
     
     # ========= NORMALIZE =========
     t0 = time.time()
-    root = './data/HCI'
+    root = './data/DHTau'
     data = get_data(root)
     results = tfnegfc.adjust_gaussian(data['psf'][lambda_ch, psf_pos])
     fwhm_sphere  = tf.reduce_mean(results['fwhm'])
@@ -126,6 +126,7 @@ def run():
                                   data['rot_angles'], 
                                   num_results=10000)
     t1 = time.time()
+    samples = [r for r in results.all_states]
     opt_values = [np.mean(samples_chain) for samples_chain in samples]
 
     backlog.append(['mcmc', 
