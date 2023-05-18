@@ -10,6 +10,11 @@ from vip_hci.metrics.snr_source     import snr
 from skimage.feature				import peak_local_max
 from vip_hci.preproc.derotation     import cube_derotate
 
+try:
+    from photutils.aperture import aperture_photometry, CircularAperture
+except:
+    from photutils import aperture_photometry, CircularAperture
+
 @tf.function
 def gauss_model(params, mean, scale, amplitude):
     f = tf.exp(-((params[:, 0]-mean[0])**2/(2*scale[0]**2) + (params[:, 1]-mean[1])**2/(2*scale[1]**2)))
@@ -212,13 +217,13 @@ def apply_adi(cube, rot_ang, out_size, ncomp=1, derotate='tf', return_cube=False
         return median, res_derot
     return median
 
-def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10):
+def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10, num_peaks=20):
     _, median, stddev = sigma_clipped_stats(adi_image, sigma=bkg_sigma, maxiters=None)
     bkg_level = median + (stddev * bkg_sigma)
 
     coords_temp = peak_local_max(adi_image, threshold_abs=bkg_level,
                                  min_distance=int(np.ceil(fwhm)),
-                                 num_peaks=20)
+                                 num_peaks=num_peaks)
 
     coords, fluxes, fwhm_mean, snr_list = [], [], [], []
     table = pd.DataFrame()
@@ -261,9 +266,13 @@ def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10):
         except Exception as e:
             val_snr = None
             
+        aper = CircularAperture((x_pos, y_pos), r=mean_fwhm_fit / 2.) 
+        obj_flux_i = aperture_photometry(adi_image, aper, method='exact')
+        obj_flux_i = obj_flux_i['aperture_sum'][0]
+            
         if results['amplitude'] > 0 and condxf and condyf and condmf and val_snr is not None:
             coords.append((yyc, xxc))
-            fluxes.append(results['amplitude'].numpy())
+            fluxes.append(obj_flux_i)
             fwhm_mean.append(mean_fwhm_fit)
             snr_list.append(val_snr)
 
