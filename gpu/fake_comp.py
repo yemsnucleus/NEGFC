@@ -212,13 +212,13 @@ def apply_adi(cube, rot_ang, out_size, ncomp=1, derotate='tf', return_cube=False
         return median, res_derot
     return median
 
-def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10):
+def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10, num_peaks=20):
     _, median, stddev = sigma_clipped_stats(adi_image, sigma=bkg_sigma, maxiters=None)
     bkg_level = median + (stddev * bkg_sigma)
 
     coords_temp = peak_local_max(adi_image, threshold_abs=bkg_level,
                                  min_distance=int(np.ceil(fwhm)),
-                                 num_peaks=20)
+                                 num_peaks=num_peaks)
 
     coords, fluxes, fwhm_mean, snr_list = [], [], [], []
     table = pd.DataFrame()

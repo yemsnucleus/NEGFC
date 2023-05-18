@@ -149,22 +149,28 @@ class MoveScalePSF(Layer):
         self.n_candidates = tf.shape(self.init_x)[0]
         
     def build(self, input_shape):  # Create the state of the layer (weights)
-        init_x = tf.constant(self.init_x, 
-                             shape=(self.n_candidates, 1), 
+        init_x = tf.tile(tf.expand_dims(self.init_x, 0), 
+                         [input_shape['rot_angles'][-1], 1])
+        init_x = tf.constant(init_x, 
+                             shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
                              dtype=tf.float32)
         self.x = tf.Variable(initial_value=init_x,
                              trainable=True, 
                              name='xcoord')
-
-        init_y = tf.constant(self.init_y, 
-                             shape=(self.n_candidates, 1), 
+        init_y = tf.tile(tf.expand_dims(self.init_y, 0), 
+                         [input_shape['rot_angles'][-1], 1])
+        init_y = tf.constant(init_y, 
+                             shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
                              dtype=tf.float32)
         self.y = tf.Variable(initial_value=init_y,
                              trainable=True, 
                              name='ycoord')
+        
+        init_f = tf.tile(tf.expand_dims(self.init_f, 0), 
+                         [input_shape['rot_angles'][-1], 1])
 
-        init_f = tf.constant(self.init_f, 
-                             shape=(self.n_candidates, 1), 
+        init_f = tf.constant(init_f, 
+                             shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
                              dtype=tf.float32)
         self.flux = tf.Variable(initial_value=init_f,
                                 trainable=True, 
@@ -180,19 +186,20 @@ class MoveScalePSF(Layer):
         
         x_c = self.x - width_s # origin in the middle of the frame 
         y_c = self.y - height_s # origin in the middle of the frame
-        
+                
         radius = tf.sqrt(tf.pow(x_c, 2)+tf.pow(y_c, 2))
         
         angle = tf.atan2(y_c, x_c) # radians
         angle = angle/tf.constant(np.pi)*180.  # degrees
         theta = tf.math.mod(angle, 360.) # bound up to 1 circumference  
-            
+        
+        
         rot_theta = theta - inputs['rot_angles'] # rotate angles 
         rot_theta = tf.experimental.numpy.deg2rad(rot_theta)
         
         x_s = tf.multiply(radius, tf.cos(rot_theta)) #+ width_s
         y_s = tf.multiply(radius, tf.sin(rot_theta)) #+ height_s
-
+        
         shift_indices = tf.stack([x_s, y_s], axis=2)
         
         cube_patch = tf.expand_dims(inputs['psf'], 1)
@@ -207,11 +214,11 @@ class MoveScalePSF(Layer):
                               fn_output_signature=(tf.float32),
                               parallel_iterations=mp.cpu_count()//2,
                          name='translate')      
+
+        fluxes = tf.reshape(self.flux, [self.n_candidates, n_frames, 1, 1, 1])
         
-        fluxes = tf.tile(self.flux, [1, n_frames])
-        fluxes = tf.reshape(fluxes, [self.n_candidates, n_frames, 1, 1, 1])
+        partial_cords = tf.stack([self.x, self.y], 2)
+        partial_cords = tf.reshape(partial_cords, [self.n_candidates, n_frames, 2])
         
-        partial_cords = tf.stack([self.x, self.y], 1)
-        partial_cords = tf.reshape(partial_cords, [self.n_candidates, 2])
-        
-        return tf.multiply(patch, fluxes), partial_cords
+        injected = tf.multiply(patch, fluxes)
+        return injected, partial_cords

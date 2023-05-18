@@ -32,10 +32,12 @@ def get_dataset(xy_pos, flux, cube, psf, rot_ang, lambda_ch=0, psf_pos=0):
     dataset = dataset.map(format_input)
     return dataset.batch(1)
 
-def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1):
+def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10):
     cube_route = os.path.join(root, 'center_im.fits')
     cube  = fits.getdata(cube_route, ext=0)
-#     cube = cube[None,...]
+    
+    if tf.rank(cube) < 4:
+        cube = cube[None,...]
     
     psf_route  = os.path.join(root, 'median_unsat.fits')
     psf  = fits.getdata(psf_route, ext=0)
@@ -60,8 +62,9 @@ def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1):
     
     table = tfnegfc.get_coords(adi_image.numpy(), 
                                fwhm=fwhm_sphere, 
-                               bkg_sigma=5, 
-                               cut_size=10)
+                               bkg_sigma=bkg_sigma, 
+                               cut_size=10,
+                               num_peaks=num_peaks)
     
     xy_cords  = table[['x', 'y']].values
     init_flux = table['flux'].values 
