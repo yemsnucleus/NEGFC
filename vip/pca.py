@@ -4,8 +4,34 @@ from vip_hci.var.shapes			import get_square, prepare_matrix
 from vip_hci.preproc.parangles	import check_pa_vector
 from vip_hci.preproc.derotation import cube_derotate
 
-from plottools 					import plot_to_compare
+from .plottools 					import plot_to_compare
 
+from sklearn.decomposition import PCA
+
+def reduce_pca_opt(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False, dpi=100, text_box='', n_jobs=1):
+
+	nz, ny, nx = cube.shape
+	rot_angles = check_pa_vector(rot_angles)
+
+	pca_model = PCA(n_components=ncomp)
+	matrix = prepare_matrix(cube, mode='fullfr', verbose=False)
+	print(matrix.shape)
+	matrix_reduced = pca_model.fit_transform(matrix)
+	print(matrix_reduced.shape)
+	matrix_reconstructed = pca_model.inverse_transform(matrix_reduced)
+	print(matrix_reconstructed.shape)
+
+	matrix_reconstructed = matrix_reconstructed.reshape(matrix_reconstructed.shape[0], ny, nx)
+
+	residuals     = cube - matrix_reconstructed
+
+	# NOT SURE WHY rot_angles IS NEGATIVE
+	array_der = cube_derotate(residuals, rot_angles, nproc=n_jobs, 
+							  imlib='opencv', interpolation='nearneig')
+
+	res_frame = np.nanmedian(array_der, axis=0)
+
+	return res_frame, residuals
 
 def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False, dpi=100, text_box='', n_jobs=1):
 	""" Reduce cube using Angular Differential Imaging (ADI) techinique. 
@@ -55,7 +81,7 @@ def reduce_pca(cube, rot_angles, ncomp=1, fwhm=4, plot=False, return_cube=False,
 
 	# NOT SURE WHY rot_angles IS NEGATIVE
 	array_der = cube_derotate(residuals, rot_angles, nproc=n_jobs, 
-							  imlib='vip-fft', interpolation='lanczos4')
+							  imlib='opencv', interpolation='nearneig')
 
 	# plot_to_compare([residuals[0], array_der[0]], ['Original', 'Rotated'])
 
