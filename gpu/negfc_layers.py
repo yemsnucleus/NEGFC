@@ -149,29 +149,30 @@ class MoveScalePSF(Layer):
         self.n_candidates = tf.shape(self.init_x)[0]
         
     def build(self, input_shape):  # Create the state of the layer (weights)
-        init_x = tf.tile(tf.expand_dims(self.init_x, 0), 
-                         [input_shape['rot_angles'][-1], 1])
-        init_x = tf.constant(init_x, 
-                             shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
+        init_x = tf.constant(self.init_x, 
+                             shape=(self.n_candidates, 1), 
                              dtype=tf.float32)
         self.x = tf.Variable(initial_value=init_x,
                              trainable=True, 
                              name='xcoord')
-        init_y = tf.tile(tf.expand_dims(self.init_y, 0), 
-                         [input_shape['rot_angles'][-1], 1])
-        init_y = tf.constant(init_y, 
-                             shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
+
+        init_y = tf.constant(self.init_y, 
+                             shape=(self.n_candidates, 1), 
                              dtype=tf.float32)
         self.y = tf.Variable(initial_value=init_y,
                              trainable=True, 
                              name='ycoord')
         
-        init_f = tf.tile(tf.expand_dims(self.init_f, 0), 
-                         [input_shape['rot_angles'][-1], 1])
+#         init_f = tf.tile(tf.expand_dims(self.init_f, 0), 
+#                          [input_shape['rot_angles'][-1], 1])
+#         init_f = tf.constant(init_f, 
+#                              shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
+#                              dtype=tf.float32)
 
-        init_f = tf.constant(init_f, 
-                             shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
+        init_f = tf.constant(self.init_f, 
+                             shape=(self.n_candidates, 1), 
                              dtype=tf.float32)
+            
         self.flux = tf.Variable(initial_value=init_f,
                                 trainable=True, 
                                 name='flux')
@@ -215,10 +216,12 @@ class MoveScalePSF(Layer):
                               parallel_iterations=mp.cpu_count()//2,
                          name='translate')      
 
-        fluxes = tf.reshape(self.flux, [self.n_candidates, n_frames, 1, 1, 1])
-        
-        partial_cords = tf.stack([self.x, self.y], 2)
-        partial_cords = tf.reshape(partial_cords, [self.n_candidates, n_frames, 2])
+#         fluxes = tf.reshape(self.flux, [self.n_candidates, n_frames, 1, 1, 1])
+        fluxes = tf.reshape(self.flux, [self.n_candidates, 1, 1, 1, 1])
+        fluxes = tf.tile(fluxes, [1, n_frames, 1, 1, 1])
+
+        partial_cords = tf.stack([self.x, self.y], 1)
+        partial_cords = tf.reshape(partial_cords, [self.n_candidates, 2])
         
         injected = tf.multiply(patch, fluxes)
         return injected, partial_cords

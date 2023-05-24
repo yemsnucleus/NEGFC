@@ -2,11 +2,12 @@ import gpu.fake_comp as tfnegfc
 import tensorflow as tf
 import os
 
+from vip_hci.fm import normalize_psf
 from .fake_comp import create_patch
 from astropy.io import fits
 
 
-def format_input(xy, flux, cube, psf, rot):
+def format_input(xy, init_fwhm, flux, cube, psf, rot):
     inputs = {
         'psf': psf,
         'rot_angles':rot,
@@ -15,32 +16,44 @@ def format_input(xy, flux, cube, psf, rot):
     outputs = {
         'cube':cube,
         'rot_angles':rot,
+        'fwhm':init_fwhm,
     }
     
     return inputs, outputs
 
-def get_dataset(xy_pos, flux, cube, psf, rot_ang, lambda_ch=0, psf_pos=0):    
+def get_dataset(xy_pos, init_fwhm, flux, cube, psf, rot_ang, lambda_ch=0, psf_pos=0):    
     psf = create_patch(cube[lambda_ch, psf_pos], psf[lambda_ch])
 
     cube_inp = cube[lambda_ch]
 
     dataset = tf.data.Dataset.from_tensor_slices((xy_pos[None,...],
                                                   flux[None,...],
+                                                  init_fwhm[None,...],
                                                   cube_inp[None,...], 
                                                   psf[None,...], 
                                                   rot_ang[None,...]))
     dataset = dataset.map(format_input)
     return dataset.batch(1)
 
-def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10):
+def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10, normalize=False):
     cube_route = os.path.join(root, 'center_im.fits')
     cube  = fits.getdata(cube_route, ext=0)
     
     if tf.rank(cube) < 4:
         cube = cube[None,...]
-    
+        
+    if normalize:
+        x_min = tf.reduce_min(cube, [2, 3])
+        x_min = tf.reshape(x_min, [tf.shape(x_min)[0], tf.shape(x_min)[1], 1,1])
+        x_max = tf.reduce_max(cube, [2, 3])
+        x_max = tf.reshape(x_max, [tf.shape(x_max)[0], tf.shape(x_max)[1], 1,1])
+        cube = cube-x_min/(x_max - x_min)
+
     psf_route  = os.path.join(root, 'median_unsat.fits')
     psf  = fits.getdata(psf_route, ext=0)
+    
+    if psf.shape[-1] % 2 == 0:
+        psf = psf[...,:-1,:-1]  
     
     ra_route   = os.path.join(root, 'rotnth.fits')
     rot_ang    = fits.getdata(ra_route, ext=0)
@@ -68,10 +81,12 @@ def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10
     
     xy_cords  = table[['x', 'y']].values
     init_flux = table['flux'].values 
+    init_fwhm = table['fwhm_mean'].values
     
     
     dataset = get_dataset(xy_cords,
                           init_flux,
+                          init_fwhm,
                           cube, 
                           normalized_psf, 
                           rot_ang, 

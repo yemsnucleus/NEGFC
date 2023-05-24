@@ -1,6 +1,7 @@
 import tensorflow as tf 
 import tensorflow_addons as tfa
 import multiprocessing as mp
+import numpy as np
 from .fake_comp import create_circular_mask, rotate_cube
 
 def wrapper(fn, **kwargs):
@@ -30,38 +31,63 @@ def custom_loss(adi_fake, radius, rot_theta, fwhm=3, std=True):
         mask = tf.not_equal(objetive_reg, 0.)
         # use the mask to get non-zero values
         non_zero_values = tf.boolean_mask(objetive_reg, mask)
-        loss = tf.pow(tf.math.reduce_std(non_zero_values), 2)
+        loss = tf.pow(tf.math.reduce_std(non_zero_values),2)
     else:
         loss = tf.pow(tf.math.reduce_sum(objetive_reg), 2)
     return loss
 
 
 @tf.function
-def apply_circle_mask(n_frames, height, width, coordinates, radius):
-    matrices = tf.ones([n_frames, height, width], dtype=tf.float32)
+def get_rot_coords(width, height, center, radius, rot_angles):
+    width = tf.cast(width, tf.float32)
+    height = tf.cast(height, tf.float32)
+    width_s  = width/tf.constant(2., dtype=tf.float32)
+    height_s = height/tf.constant(2., dtype=tf.float32)
 
-    # Generate meshgrid of indices
-    y_indices, x_indices = tf.meshgrid(tf.range(height), tf.range(width), indexing='ij')
-    y_indices = tf.expand_dims(y_indices, axis=-1)
-    x_indices = tf.expand_dims(x_indices, axis=-1)
-    y_indices = tf.cast(y_indices, tf.float32)
-    x_indices = tf.cast(x_indices, tf.float32)
-    # Compute distance from each coordinate
+    x_c = center[0] - width_s # origin in the middle of the frame 
+    y_c = center[1] - height_s # origin in the middle of the frame
+
+    radius = tf.sqrt(tf.pow(x_c, 2)+tf.pow(y_c, 2))
+
+    angle = tf.atan2(y_c, x_c) # radians
+    angle = angle/tf.constant(np.pi)*180.  # degrees
+    theta = tf.math.mod(angle, 360.) # bound up to 1 circumference  
+
+    rot_theta = theta - rot_angles # rotate angles 
+    rot_theta = tf.experimental.numpy.deg2rad(rot_theta)
+
+    x_s = tf.multiply(radius, tf.cos(rot_theta)) + width_s
+    y_s = tf.multiply(radius, tf.sin(rot_theta)) + height_s
+
+    shift_indices = tf.stack([x_s, y_s], axis=2)
     
-    distances = tf.square(x_indices - coordinates[:, 0]) + tf.square(y_indices - coordinates[:, 1])
-
-    # Create circular masks
-    pow_radius = tf.cast(tf.pow(radius, 2), tf.float32)
-    distances = tf.cast(distances, tf.float32)
-    masks = tf.cast(distances <= pow_radius, matrices.dtype)
-    # Apply masks to matrices
-    masked_matrices = matrices * tf.transpose(masks, [2,0,1])
-    return masked_matrices
+    return shift_indices
 
 @tf.function
-def reduce_std(y_true, y_pred, radius=2, debug=False):
+def create_circle_mask(coordinates, w, h, r):
+    # Create a grid of coordinates
+    grid_x, grid_y = tf.meshgrid(tf.range(w), tf.range(h))
+
+    # Expand dimensions to match the input coordinates
+    expanded_grid_x = tf.expand_dims(grid_x, axis=-1)
+    expanded_grid_x = tf.cast(expanded_grid_x, tf.float32)
+    expanded_grid_y = tf.expand_dims(grid_y, axis=-1)
+    expanded_grid_y = tf.cast(expanded_grid_y, tf.float32)
+
+    # Calculate the squared distance from each point to the coordinates
+    dist_sq = tf.square(expanded_grid_x - coordinates[:, 0]) + tf.square(expanded_grid_y - coordinates[:, 1])
+
+    # Create the mask by comparing the squared distance to the radius squared
+    mask = tf.cast(dist_sq <= r**2, dtype=tf.float32)
+
+    return tf.transpose(mask, [2, 0, 1])    
+    
+
+@tf.function
+def reduce_std(y_true, y_pred, nfwhm=2, debug=False, minimize='std'):
     fake = y_pred[0]
     xycords = y_pred[1]
+
     
     n_candidates = tf.shape(fake)[0]
     n_frames = tf.shape(fake)[1]
@@ -74,31 +100,37 @@ def reduce_std(y_true, y_pred, radius=2, debug=False):
     injected = fake + cube
     
     def fn(xy_center, rot_angles):
-        m = apply_circle_mask(n_frames, w, h, xy_center, radius)
+        tf.print(xy_center)
+        xy_mask = get_rot_coords(w, h, xy_center, y_true['fwhm']*nfwhm, rot_angles)
+        xy_mask = tf.reshape(xy_mask, [n_frames, 2])
+        m = create_circle_mask(xy_mask, w, h, y_true['fwhm']*nfwhm)
         m = tf.reshape(m, [n_frames, w, h, 1])
-        rot_angles = tf.reshape(rot_angles, [tf.shape(rot_angles)[1]])
-        
-        m_derot = tfa.image.rotate(m, -rot_angles, 
-                                   interpolation='nearest', 
-                                   fill_mode='reflect')
-
-        m_derot = tf.reshape(m_derot, [n_frames, w, h, 1])
-        
-        return m_derot
+        return m
     
     mask = tf.map_fn(lambda x: fn(x, y_true['rot_angles']), 
                      xycords,                               
                      fn_output_signature=(tf.float32),
                      parallel_iterations=mp.cpu_count()//2)
     
-        
+    mask = tf.reshape(mask, [n_candidates, n_frames, w, h, 1])
+
     objetive_reg = injected*mask
-    valid = tf.not_equal(objetive_reg, 0.)
-    non_zero_values = tf.boolean_mask(objetive_reg, valid)
     
     if debug:
         return objetive_reg
     
-    return tf.math.reduce_std(non_zero_values)
+    if minimize == 'std':
+        valid = tf.not_equal(objetive_reg, 0.)
+        non_zero_values = tf.boolean_mask(objetive_reg, valid)
+        print('std')
+        N = tf.cast(tf.shape(non_zero_values)[0], tf.float32)
+        loss = tf.math.reduce_std(non_zero_values)*(N-1)
+        return tf.cast(loss, tf.float64)
+            
+    if minimize == 'sum':
+        return tf.abs(tf.reduce_sum(objetive_reg))
+
+    
+   
 
 

@@ -99,12 +99,13 @@ def normalize_psf(psf, fwhm):
 def create_patch(frame, template):
     w = tf.shape(template)[-1]//2
     cenx, ceny = tf.shape(frame)[-2]//2, tf.shape(frame)[-1]//2
-    start_y, end_y = int(ceny-w), int(ceny+w)
-    start_x, end_x = int(cenx-w), int(cenx+w)
+    start_y, end_y = int(ceny-w), int(ceny+w+1)
+    start_x, end_x = int(cenx-w), int(cenx+w+1)
 
     frame_copy = tf.zeros_like(frame)
     indices = tf.stack(tf.meshgrid(tf.range(start_y, end_y), tf.range(start_x, end_x)), axis=-1)
     template_reshape = tf.reshape(template, [-1, template.shape[-1]])
+
     frame_copy = tf.tensor_scatter_nd_update(frame_copy, indices, template_reshape)
     return frame_copy
 
