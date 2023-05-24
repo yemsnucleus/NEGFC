@@ -27,6 +27,7 @@ from astropy.stats				import gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 from joblib						import Parallel, delayed
 from astropy.modeling			import models, fitting
 from photutils.centroids		import centroid_com
+from red						import train_network
 
 
 def shift_and_crop_cube(cube, n_jobs=1, shift_x=-1, shift_y=-1):
@@ -206,6 +207,99 @@ def recenter_cube(cube, ref_frame, fwhm_sphere=4, pos_y=None, pos_x=None, subi_s
 
 	return shifted_cube
 
+###############################################################################################
+def run_network(opt):
+	"""Test a simple network."""
+		
+	# First we load images from paths
+	cube        = open_fits(opt.cube,    header=True) 
+	psf         = open_fits(opt.psf,     header=True)
+	rot_angles  = open_fits(opt.ra, 	 header=False)
+	lambdas_inf = open_fits(opt.lam, 	 header=False)
+	filter_table = pd.read_csv("./data/filters.csv")
+	headers = [cube[1], psf[1]]
+	cube = cube[0]
+	psf = psf[0]
+
+	#lambda_d	= lambdas_inf[opt.w] 
+	pixel_scale = opt.px_corr
+	rot_angles  = -rot_angles + opt.ang_corr
+
+	try:
+		system_name = headers[0]["HIERARCH ESO DET NAME"]
+		dual_filter = headers[0]["HIERARCH ESO INS1 OPTI2 NAME"]
+	except:
+		system_name = headers[1]["HIERARCH ESO DET NAME"]
+		dual_filter = headers[1]["HIERARCH ESO INS1 OPTI2 NAME"]
+	telescope_diameter = 8
+	try:
+		filter_value = float(filter_table[filter_table["filter_name"] == dual_filter]["wavelength(nm)"].iloc[0][opt.w])
+	except:
+		filter_value = 1.593 #By default is H2
+	lambda_d = filter_value*1e-6/telescope_diameter*180/math.pi*3600/pixel_scale # lambda over d
+
+	# Check cube dimensions
+	if cube.shape[-1] % 2 == 0:
+		print('[WARNING] Cube contains odd frames. Shifting and rescaling...')
+		cube = shift_and_crop_cube(cube[opt.w], n_jobs=opt.njobs)
+
+	single_psf = psf[opt.w, opt.p, :-1, :-1]
+	ceny, cenx = frame_center(single_psf)
+	imside = single_psf.shape[0]
+	cropsize = 30 #int(1.22 * 3 * lambda_d)
+
+	psf_subimage, suby, subx = get_square(single_psf, 
+										  min(cropsize, imside),
+	                                      ceny, cenx, 
+	                                      position=True, 
+	                                      verbose=False)
+
+	fwhm_y, fwhm_x, mean_y, mean_x = fit_gaussian_2d(psf_subimage, plot=opt.plot, dpi=100, 
+		text_box='Gaussian model adjusted on the original PSF (LEFT) pixels. \
+				  We fit a parametric models to find the actual center of the star')
+
+	mean_y +=  suby # put the subimage in the original center
+	mean_x +=  subx # put the subimage in the original center
+	
+	fwhm_sphere  = np.mean([fwhm_y, fwhm_x]) # Shared across the frames 
+	psf_rec = recenter_cube(psf[opt.w], 
+							single_psf, 
+							fwhm_sphere=fwhm_sphere, 
+							n_jobs=opt.njobs)
+	
+	# Normalizes a PSF (2d or 3d array), to have the flux in a 1xFWHM aperture equal to one. 
+	# It also allows to crop the array and center the PSF at the center of the array(s).
+	psf_norm, fwhm_flux, fwhm = normalize_psf(psf_rec[opt.p], 
+	                                          fwhm=fwhm_sphere,
+	                                          full_output=True, 
+	                                          verbose=False) 
+
+	# ======== MOON DETECTION =========
+	frame, res_cube = reduce_pca(cube[opt.w], rot_angles, ncomp=1, fwhm=4, plot=opt.plot, 
+								return_cube=True, dpi=100, n_jobs=opt.njobs,
+								text_box='Collapsed (median) PCA residuals after using the first principal component \
+								along the time axis to reconstruct the original image. The first 3 images correspond to a single frame-sample from the cube')
+	# Blob can be defined as a region of an image in which some properties are constant or 
+	# vary within a prescribed range of values.
+	snr_thresh = opt.snr #By default is 2
+	table = get_intersting_coords(frame, psf_norm, fwhm=fwhm, bkg_sigma=5, plot=opt.plot)
+	table = table[table['snr'] > snr_thresh]
+
+	frame = train_network(cube[opt.w], table, psf_norm, fwhm, bkg_sigma=5)
+	table = get_intersting_coords(frame, psf_norm, fwhm=fwhm, bkg_sigma=5, plot=opt.plot)
+	table = table[table['snr'] > snr_thresh]
+
+	# Plot detection
+	if opt.plot or True:
+		detection_text = ''
+		for i in range(len(table)):
+			    detection_text+= '\nCandidate ' + str(i) + '-> x: ' + str(table.loc[i].x) + ', y: ' + str(table.loc[i].y) + ', flux: ' + str(table.loc[i].flux)
+		print(detection_text)
+		plot_detection(frame, table, bounded=False, dpi=100, 
+			text_box= 'We have detected companions from the collapsed (median) frame, and have obtained all possible candidates from the get_interesting_coords function. \
+					 However, we have filtered out some of them as they do not show any variation from the background.')
+########################################################################################################
+
 def run_pipeline(opt):
 	"""Main function to run Negative Fake Companion (NEGFC) preprocessing."""
 		
@@ -356,4 +450,6 @@ if __name__ == '__main__':
 	parser.add_argument('--snr', default=2, type=float,
 	                    help='S/N threshold for deciding whether the blob is a detection or not')
 	opt = parser.parse_args()
-	run_pipeline(opt)
+	#run_pipeline(opt)
+	run_network(opt)
+    
