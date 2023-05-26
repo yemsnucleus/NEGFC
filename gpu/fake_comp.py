@@ -22,14 +22,14 @@ def gauss_model(params, mean, scale, amplitude):
 
 def adjust_gaussian(frame, return_history=False, n_iters=50, learning_rate=1e-1, init_x=None, init_y=None, init_scale=2):
     tpsf      = tf.convert_to_tensor(frame)
-    indices   = tf.cast(tf.where(tpsf), tf.float32)
+    indices   = tf.cast(tf.where(tpsf+1e-9), tf.float32)
     shp_tpsf  = tf.shape(tpsf)
     
     if init_x is None:
-        init_x    = tf.cast(shp_tpsf[0]//2, tf.float32)
+        init_x    = tf.cast(shp_tpsf[0]/2, tf.float32)
         
     if init_y is None:
-        init_y    = tf.cast(shp_tpsf[1]//2, tf.float32)
+        init_y    = tf.cast(shp_tpsf[1]/2, tf.float32)
             
     flat_tpsf = tf.reshape(tpsf, [-1])
     
@@ -47,7 +47,8 @@ def adjust_gaussian(frame, return_history=False, n_iters=50, learning_rate=1e-1,
     for i in range(n_iters):
         with tf.GradientTape() as tape:
             y_pred = gauss_model(indices, mean, scale, amplitude)
-            loss = tf.keras.metrics.mean_squared_error(flat_tpsf, y_pred)
+            loss = tf.keras.metrics.mean_squared_error(flat_tpsf, 
+                                                        y_pred)
             losses.append(loss)
             # Compute gradients
             trainable_vars = [mean, scale]

@@ -1,22 +1,23 @@
 import gpu.fake_comp as tfnegfc
 import tensorflow as tf
+import numpy as np
+import tensorflow_addons as tfa
 import os
 
 from vip_hci.fm import normalize_psf
 from .fake_comp import create_patch
 from astropy.io import fits
 
-
 def format_input(xy, init_fwhm, flux, cube, psf, rot):
     inputs = {
         'psf': psf,
         'rot_angles':rot,
     }
-    
+     
     outputs = {
         'cube':cube,
         'rot_angles':rot,
-        'fwhm':init_fwhm,
+        'fwhm':tf.expand_dims(init_fwhm, -1),
     }
     
     return inputs, outputs
@@ -35,7 +36,8 @@ def get_dataset(xy_pos, init_fwhm, flux, cube, psf, rot_ang, lambda_ch=0, psf_po
     dataset = dataset.map(format_input)
     return dataset.batch(1)
 
-def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10, normalize=False):
+def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10, 
+             normalize=False):
     cube_route = os.path.join(root, 'center_im.fits')
     cube  = fits.getdata(cube_route, ext=0)
     
@@ -53,8 +55,12 @@ def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10
     psf  = fits.getdata(psf_route, ext=0)
     
     if psf.shape[-1] % 2 == 0:
-        psf = psf[...,:-1,:-1]  
-    
+        psf_reduced = psf[...,:-1,:-1]  
+        psf = np.zeros_like(psf_reduced)
+        for i, p_pos in enumerate(psf_reduced):
+            for k, p_lambda in enumerate(p_pos):
+                psf[i][k] = tfa.image.translate(p_lambda, [0.5, 0.5])
+
     ra_route   = os.path.join(root, 'rotnth.fits')
     rot_ang    = fits.getdata(ra_route, ext=0)
     rot_ang    = -rot_ang
@@ -82,7 +88,6 @@ def load_data(root, lambda_ch = 0, psf_pos=0, ncomp=1, bkg_sigma=5, num_peaks=10
     xy_cords  = table[['x', 'y']].values
     init_flux = table['flux'].values 
     init_fwhm = table['fwhm_mean'].values
-    
     
     dataset = get_dataset(xy_cords,
                           init_flux,

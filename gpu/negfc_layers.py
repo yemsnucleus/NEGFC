@@ -57,7 +57,6 @@ class RotateCoords(Layer):
         
         return shift_indices, radius, theta
     
-    
 class FakeCompanion(Layer):
     '''
     Inject a fake companion
@@ -137,8 +136,7 @@ class AngularDifferentialImaging(Layer):
                               (cube, rot_angles), dtype=(tf.float32))
 
         return collapsed
-    
-    
+     
 class MoveScalePSF(Layer):
     def __init__(self, init_xy, init_f, **kwargs):
         super(MoveScalePSF, self).__init__(**kwargs)
@@ -163,11 +161,11 @@ class MoveScalePSF(Layer):
                              trainable=True, 
                              name='ycoord')
         
-#         init_f = tf.tile(tf.expand_dims(self.init_f, 0), 
-#                          [input_shape['rot_angles'][-1], 1])
-#         init_f = tf.constant(init_f, 
-#                              shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
-#                              dtype=tf.float32)
+        #         init_f = tf.tile(tf.expand_dims(self.init_f, 0), 
+        #                          [input_shape['rot_angles'][-1], 1])
+        #         init_f = tf.constant(init_f, 
+        #                              shape=(self.n_candidates, input_shape['rot_angles'][-1]), 
+        #                              dtype=tf.float32)
 
         init_f = tf.constant(self.init_f, 
                              shape=(self.n_candidates, 1), 
@@ -216,7 +214,7 @@ class MoveScalePSF(Layer):
                               parallel_iterations=mp.cpu_count()//2,
                          name='translate')      
 
-#         fluxes = tf.reshape(self.flux, [self.n_candidates, n_frames, 1, 1, 1])
+        #         fluxes = tf.reshape(self.flux, [self.n_candidates, n_frames, 1, 1, 1])
         fluxes = tf.reshape(self.flux, [self.n_candidates, 1, 1, 1, 1])
         fluxes = tf.tile(fluxes, [1, n_frames, 1, 1, 1])
 
@@ -225,3 +223,68 @@ class MoveScalePSF(Layer):
         
         injected = tf.multiply(patch, fluxes)
         return injected, partial_cords
+
+class FakeInjection(Layer):
+    def __init__(self, init_radius, init_theta, init_f, **kwargs):
+        super().__init__(**kwargs) # FakeInjection, self
+        self.init_radius  = tf.cast(init_radius, tf.float32)
+        self.init_theta  = tf.cast(init_theta, tf.float32)
+        self.init_f  = tf.cast(init_f, tf.float32)
+        self.n_candidates = tf.shape(init_theta)[0]
+        
+    def build(self, input_shape):  # Create the state of the layer (weights)
+        init_radius = tf.constant(self.init_radius, 
+                             shape=(self.n_candidates, 1), 
+                             dtype=tf.float32)
+        self.radius = tf.Variable(initial_value=init_radius,
+                             trainable=True, 
+                             name='xcoord')
+
+        init_theta = tf.constant(self.init_theta, 
+                             shape=(self.n_candidates, 1), 
+                             dtype=tf.float32)
+        self.theta = tf.Variable(initial_value=init_theta,
+                             trainable=True, 
+                             name='ycoord')
+        
+        init_f = tf.constant(self.init_f, 
+                             shape=(self.n_candidates, 1), 
+                             dtype=tf.float32)
+            
+        self.flux = tf.Variable(initial_value=init_f,
+                                trainable=True, 
+                                name='flux')
+    @tf.function
+    def call(self, inputs):
+        n_frames = tf.shape(inputs['rot_angles'])[1]
+        width    = tf.cast(tf.shape(inputs['psf'])[-2], dtype=tf.float32)
+        height   = tf.cast(tf.shape(inputs['psf'])[-1], dtype=tf.float32)
+        
+        width_s  = width/tf.constant(2., dtype=tf.float32)
+        height_s = height/tf.constant(2., dtype=tf.float32)
+    
+        rot_theta = self.theta - inputs['rot_angles'] # rotate angles 
+        rot_theta = tf.experimental.numpy.deg2rad(rot_theta)
+        
+        x_s = tf.multiply(self.radius, tf.cos(rot_theta))
+        y_s = tf.multiply(self.radius, tf.sin(rot_theta))
+        
+        shift_indices = tf.stack([x_s, y_s], axis=2)
+        
+        cube_patch = tf.expand_dims(inputs['psf'], 1)
+        cube_patch = tf.tile(cube_patch, [self.n_candidates, n_frames, 1, 1])
+        
+        def fn(cube, xy_translations):
+            return tfa.image.translate(tf.expand_dims(cube, -1), xy_translations)
+            
+        
+        patch = tf.map_fn(lambda x: fn(x[0], x[1]), 
+                             (cube_patch, shift_indices),
+                              fn_output_signature=(tf.float32),
+                              parallel_iterations=mp.cpu_count()//2,
+                         name='translate')      
+
+        fluxes = tf.reshape(self.flux, [self.n_candidates, 1, 1, 1, 1])
+        injected = tf.multiply(patch, fluxes)
+
+        return injected, self.radius, self.theta

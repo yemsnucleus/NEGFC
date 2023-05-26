@@ -66,21 +66,21 @@ def get_rot_coords(width, height, center, radius, rot_angles):
 @tf.function
 def create_circle_mask(coordinates, w, h, r):
     # Create a grid of coordinates
+    r = tf.cast(r, tf.float32)
     grid_x, grid_y = tf.meshgrid(tf.range(w), tf.range(h))
-
+    tf.print(grid_x)
     # Expand dimensions to match the input coordinates
-    expanded_grid_x = tf.expand_dims(grid_x, axis=-1)
-    expanded_grid_x = tf.cast(expanded_grid_x, tf.float32)
-    expanded_grid_y = tf.expand_dims(grid_y, axis=-1)
-    expanded_grid_y = tf.cast(expanded_grid_y, tf.float32)
-
+    expanded_grid_x = tf.cast(grid_x, tf.float32)
+    expanded_grid_y = tf.cast(grid_y, tf.float32)
+    x_cords = tf.expand_dims(tf.expand_dims(coordinates[:, 0], -1), -1)
+    tf.print(x_cords)
+    y_cords = tf.expand_dims(tf.expand_dims(coordinates[:, 1], -1), -1)
     # Calculate the squared distance from each point to the coordinates
-    dist_sq = tf.square(expanded_grid_x - coordinates[:, 0]) + tf.square(expanded_grid_y - coordinates[:, 1])
-
+    dist_sq = tf.square(tf.pow(expanded_grid_x - x_cords, 2) + \
+                        tf.pow(expanded_grid_y - y_cords, 2))
     # Create the mask by comparing the squared distance to the radius squared
-    mask = tf.cast(dist_sq <= r**2, dtype=tf.float32)
-
-    return tf.transpose(mask, [2, 0, 1])    
+    mask = tf.cast(dist_sq <= r, dtype=tf.float32)
+    return mask
     
 
 @tf.function
@@ -88,7 +88,6 @@ def reduce_std(y_true, y_pred, nfwhm=2, debug=False, minimize='std'):
     fake = y_pred[0]
     xycords = y_pred[1]
 
-    
     n_candidates = tf.shape(fake)[0]
     n_frames = tf.shape(fake)[1]
     w = tf.shape(fake)[2]
@@ -100,7 +99,6 @@ def reduce_std(y_true, y_pred, nfwhm=2, debug=False, minimize='std'):
     injected = fake + cube
     
     def fn(xy_center, rot_angles):
-        tf.print(xy_center)
         xy_mask = get_rot_coords(w, h, xy_center, y_true['fwhm']*nfwhm, rot_angles)
         xy_mask = tf.reshape(xy_mask, [n_frames, 2])
         m = create_circle_mask(xy_mask, w, h, y_true['fwhm']*nfwhm)
@@ -131,6 +129,84 @@ def reduce_std(y_true, y_pred, nfwhm=2, debug=False, minimize='std'):
         return tf.abs(tf.reduce_sum(objetive_reg))
 
     
+def create_circle_cube(pairs, radius, dimensions):
+    mask = tf.map_fn(lambda x: create_circle_mask_2(dimensions, x, radius),
+                     pairs,
+                     fn_output_signature=(tf.float32),
+                     parallel_iterations=mp.cpu_count()//2)
+    # Reshape the cube to (N, W, H, 1)
+    mask = tf.reshape(mask, (-1, dimensions[0], dimensions[1], 1))
+    return mask
+
+def create_circle_mask_2(image_shape, center, radius):
+    # Create a meshgrid of coordinates
+    x_coords, y_coords = tf.meshgrid(tf.range(image_shape[1]), tf.range(image_shape[0]))
+    x_coords = tf.cast(x_coords, tf.float32)
+    y_coords = tf.cast(y_coords, tf.float32)
+    # Calculate the distance of each coordinate from the center
+    distances = tf.sqrt(tf.square(x_coords - center[0]) + tf.square(y_coords - center[1]))
+
+    # Create a boolean mask where the distances are less than the radius
+    mask = tf.cast(distances <= radius, tf.float32)
+
+    return mask
+
+@tf.function
+def reduce_std_angle(y_true, y_pred, nfwhm=2, debug=False, minimize='std'):
+    fake   = y_pred[0]
+    radius = y_pred[1]
+    theta  = y_pred[2]
+
+    n_candidates = tf.shape(fake)[0]
+    n_frames = tf.shape(fake)[1]
+    w = tf.shape(fake)[2]
+    h = tf.shape(fake)[3]
+
+    cube = tf.tile(y_true['cube'], [n_candidates, 1, 1, 1])
+    cube = tf.expand_dims(cube, -1)
+
+    injected = fake + cube
+    
+    # Create a grid of x and y coordinates
+    x_coords = tf.range(w, dtype=tf.float32)
+    y_coords = tf.range(h, dtype=tf.float32)
+    X, Y = tf.meshgrid(x_coords, y_coords)
+    Xf = tf.tile(tf.expand_dims(X, 0), [n_frames, 1, 1])
+    Yf = tf.tile(tf.expand_dims(Y, 0), [n_frames, 1, 1])
+    
+    def fn(currr, currtheta, currfwhm):
+        rot_theta = currtheta - y_true['rot_angles']# rotate angles 
+        rot_theta = tf.experimental.numpy.deg2rad(rot_theta)
+        x0 = tf.multiply(currr, tf.cos(rot_theta)) + tf.cast(h/2, tf.float32)
+        y0 = tf.multiply(currr, tf.sin(rot_theta)) + tf.cast(w/2, tf.float32)   
+        x0 = tf.reshape(x0, [-1, 1, 1])
+        y0 = tf.reshape(y0, [-1, 1, 1])
+
+        distances = tf.sqrt(tf.pow(Xf - x0, 2) + tf.pow(Yf - y0, 2))
+        mask = tf.where(distances <= nfwhm*currfwhm, 1., 0.)
+        return mask
+        
+    mask = tf.map_fn(lambda x: fn(x[0], x[1], x[2]),
+                     (radius, theta, y_true['fwhm'][0]),
+                     fn_output_signature=(tf.float32))
+
+    mask = tf.expand_dims(mask, -1)
+
+    objetive_reg = injected*mask
+    
+    if debug:
+        return objetive_reg
+    
+    if minimize == 'std':
+        valid = tf.not_equal(objetive_reg, 0.)
+        non_zero_values = tf.boolean_mask(objetive_reg, valid)
+        print('std')
+        N = tf.cast(tf.shape(non_zero_values)[0], tf.float32)
+        loss = tf.math.reduce_std(non_zero_values)*(N-1)
+        return tf.cast(loss, tf.float64)
+            
+    if minimize == 'sum':
+        return tf.abs(tf.reduce_sum(objetive_reg))
    
 
 
