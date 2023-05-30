@@ -1,4 +1,3 @@
-tensorflow==2.10
 tensorflow_probability==0.18
 tensorflow_addons
 vip_hci==1.2.2
