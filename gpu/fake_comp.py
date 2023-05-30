@@ -10,6 +10,11 @@ from vip_hci.metrics.snr_source     import snr
 from skimage.feature				import peak_local_max
 from vip_hci.preproc.derotation     import cube_derotate
 
+try:
+    from photutils.aperture import aperture_photometry, CircularAperture
+except:
+    from photutils import aperture_photometry, CircularAperture
+
 @tf.function
 def gauss_model(params, mean, scale, amplitude):
     f = tf.exp(-((params[:, 0]-mean[0])**2/(2*scale[0]**2) + (params[:, 1]-mean[1])**2/(2*scale[1]**2)))
@@ -17,14 +22,14 @@ def gauss_model(params, mean, scale, amplitude):
 
 def adjust_gaussian(frame, return_history=False, n_iters=50, learning_rate=1e-1, init_x=None, init_y=None, init_scale=2):
     tpsf      = tf.convert_to_tensor(frame)
-    indices   = tf.cast(tf.where(tpsf), tf.float32)
+    indices   = tf.cast(tf.where(tpsf+1e-9), tf.float32)
     shp_tpsf  = tf.shape(tpsf)
     
     if init_x is None:
-        init_x    = tf.cast(shp_tpsf[0]//2, tf.float32)
+        init_x    = tf.cast(shp_tpsf[0]/2, tf.float32)
         
     if init_y is None:
-        init_y    = tf.cast(shp_tpsf[1]//2, tf.float32)
+        init_y    = tf.cast(shp_tpsf[1]/2, tf.float32)
             
     flat_tpsf = tf.reshape(tpsf, [-1])
     
@@ -42,7 +47,8 @@ def adjust_gaussian(frame, return_history=False, n_iters=50, learning_rate=1e-1,
     for i in range(n_iters):
         with tf.GradientTape() as tape:
             y_pred = gauss_model(indices, mean, scale, amplitude)
-            loss = tf.keras.metrics.mean_squared_error(flat_tpsf, y_pred)
+            loss = tf.keras.metrics.mean_squared_error(flat_tpsf, 
+                                                        y_pred)
             losses.append(loss)
             # Compute gradients
             trainable_vars = [mean, scale]
@@ -94,12 +100,13 @@ def normalize_psf(psf, fwhm):
 def create_patch(frame, template):
     w = tf.shape(template)[-1]//2
     cenx, ceny = tf.shape(frame)[-2]//2, tf.shape(frame)[-1]//2
-    start_y, end_y = int(ceny-w), int(ceny+w)
-    start_x, end_x = int(cenx-w), int(cenx+w)
+    start_y, end_y = int(ceny-w), int(ceny+w+1)
+    start_x, end_x = int(cenx-w), int(cenx+w+1)
 
     frame_copy = tf.zeros_like(frame)
     indices = tf.stack(tf.meshgrid(tf.range(start_y, end_y), tf.range(start_x, end_x)), axis=-1)
     template_reshape = tf.reshape(template, [-1, template.shape[-1]])
+
     frame_copy = tf.tensor_scatter_nd_update(frame_copy, indices, template_reshape)
     return frame_copy
 
@@ -188,6 +195,7 @@ def rotate_cube(cube, rot_ang, derotate='tf', verbose=0):
         res_derot = tfa.image.rotate(cube, -rot_ang_deg, 
                                      interpolation='nearest', 
                                      fill_mode='reflect')
+
     else:
         cores = multiprocessing.cpu_count()-2
         if verbose: print(f'Using VIP on {cores} cores')
@@ -211,13 +219,13 @@ def apply_adi(cube, rot_ang, out_size, ncomp=1, derotate='tf', return_cube=False
         return median, res_derot
     return median
 
-def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10):
+def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10, num_peaks=20):
     _, median, stddev = sigma_clipped_stats(adi_image, sigma=bkg_sigma, maxiters=None)
     bkg_level = median + (stddev * bkg_sigma)
 
     coords_temp = peak_local_max(adi_image, threshold_abs=bkg_level,
                                  min_distance=int(np.ceil(fwhm)),
-                                 num_peaks=20)
+                                 num_peaks=num_peaks)
 
     coords, fluxes, fwhm_mean, snr_list = [], [], [], []
     table = pd.DataFrame()
@@ -260,9 +268,13 @@ def get_coords(adi_image, fwhm=4, bkg_sigma = 5, cut_size = 10):
         except Exception as e:
             val_snr = None
             
+        aper = CircularAperture((x_pos, y_pos), r=mean_fwhm_fit / 2.) 
+        obj_flux_i = aperture_photometry(adi_image, aper, method='exact')
+        obj_flux_i = obj_flux_i['aperture_sum'][0]
+            
         if results['amplitude'] > 0 and condxf and condyf and condmf and val_snr is not None:
             coords.append((yyc, xxc))
-            fluxes.append(results['amplitude'].numpy())
+            fluxes.append(obj_flux_i)
             fwhm_mean.append(mean_fwhm_fit)
             snr_list.append(val_snr)
 

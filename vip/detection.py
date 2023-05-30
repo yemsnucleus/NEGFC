@@ -14,6 +14,13 @@ from scipy.optimize					import minimize
 from vip_hci.metrics.snr_source		import snr
 from tqdm 							import tqdm
 
+def dist(yc, xc, y1, x1): #function from vip_hci
+    """
+    Return the Euclidean distance between two points, or between an array
+    of positions and a point.
+    """
+    return np.sqrt(np.power(yc-y1, 2) + np.power(xc-x1, 2))
+
 def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	"""Get coordinates of potential companions
 	
@@ -98,6 +105,8 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 			fwhm_mean.append(mean_fwhm_fit)
 
 	coords = np.array(coords)
+	if len(coords) == 0:
+		return pd.DataFrame(columns = ['x','y','flux','fwhm_mean'])
 	yy = coords[:, 0] - pad_value
 	xx = coords[:, 1] - pad_value
 	
@@ -106,10 +115,18 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 	table['y']    = yy
 	table['flux'] = fluxes
 	table['fwhm_mean'] = fwhm_mean
-	table['snr']  = table.apply(lambda col: snr(frame, 
+	centery, centerx = frame_center(frame)
+	drops = []
+	for i in range(len(table)):
+		sourcex, sourcey = table.x[i], table.y[i]
+		sep = dist(centery, centerx, float(sourcey), float(sourcex))
+		if not sep > (fwhm / 2) + 1:
+			drops.append(table.iloc[i].name)
+	table.drop(drops, inplace=True)
+	if len(table) > 0:
+		table['snr']  = table.apply(lambda col: snr(frame, 
 											 	(col['x'], col['y']), 
 											 	fwhm, False, verbose=False), axis=1)
-
 	return table
 
 def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3, 
@@ -168,8 +185,7 @@ def optimize_params(table, cube, psf, fwhm, rot_angles, pixel_scale, nfwhm=3,
 										  	radius, 
 										  	theta0, 
 										  	n_branches=1)
-			cube_emp[index,:,:]=frame_emp
-	
+			cube_emp[index,:,:]=frame_emp	
 	if full_output:
 		posy = radius * np.sin(np.deg2rad(theta0)-np.deg2rad(rot_angles[index])) + y_cube_center
 		posx = radius * np.cos(np.deg2rad(theta0)-np.deg2rad(rot_angles[index])) + x_cube_center
