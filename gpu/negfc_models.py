@@ -106,6 +106,7 @@ class CustomModelAngle(tf.keras.Model):
         with tf.GradientTape() as tape:
             fake_comp = self(x, training=True)
             loss = self.loss_fn(y, fake_comp)
+
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         return {'loss': loss}
