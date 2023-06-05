@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import tensorflow as tf
 
 from src.preprocess import preprocess_folder
 from src.format_data import create_dataset
@@ -6,16 +7,38 @@ from src.model import create_embedding_model
 from src.losses import get_companion_std
 
 from tensorflow.keras.optimizers import Adam
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 cube, psf, rot_angles, table = preprocess_folder(root='./data/fake', 
 												 target_folder='./data/fake/preprocessed')
 
-dataset = create_dataset(cube, psf, rot_angles, table, batch_size=256)
-model = create_embedding_model(window_size=15)
+dataset = create_dataset(cube, 
+                         psf, 
+                         rot_angles, 
+                         table, 
+                         window_size=20, 
+                         batch_size=2000, 
+                         repeat=10)
 
-optimizer = Adam(1e-1)
+model = create_embedding_model(window_size=20)
+
+optimizer = Adam(1)
 model.compile(loss_fn=get_companion_std, optimizer=optimizer)
-model.fit(dataset, epochs=5)
+
+es = tf.keras.callbacks.EarlyStopping(
+        monitor='loss',
+        min_delta=1e-4,
+        patience=20,
+        mode='minimize',
+        restore_best_weights=True,
+        start_from_epoch=0
+    )
+
+model.fit(dataset, epochs=1000, callbacks=[es])
+
+print(model.trainable_variables)
+
 # print(model.summary())
 
 # winsize = 15

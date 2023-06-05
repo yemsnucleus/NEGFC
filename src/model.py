@@ -1,9 +1,8 @@
 import tensorflow as tf 
 
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, LayerNormalization
 from tensorflow.keras.layers import Input
 from tensorflow.keras        import Model
-from .layer import TranslateCube
+from .layer import TranslateCube, PositionRegressor, FluxRegressor, CubeConvBlock, PSFConvBlock
 
 def build_input(window_size):
 	inputs = {
@@ -23,65 +22,29 @@ def build_input(window_size):
 
 def create_embedding_model(window_size):
 
-	input_placeholder = build_input(window_size)
+    input_placeholder = build_input(window_size)
+    
+    # Layers
+    cube_cnn = CubeConvBlock(window_size, name='cubeCNN')
+    psf_cnn  = PSFConvBlock(window_size, name='psfCNN')
+    dxdy_reg = PositionRegressor(units=64, name='dxdyREG')
+    flux_reg = FluxRegressor(units=64, name='fluxREG')
+    shift_op = TranslateCube(name='shift')
 
-	# Layers for cube
-	conv_0 = Conv2D(64, (3, 3), activation='relu', input_shape=[window_size, window_size, 1])
-	mp_0   = MaxPooling2D((2, 2))
-	conv_1 = Conv2D(32, (3, 3), activation='relu')
-	mp_1   = MaxPooling2D((2, 2))
-	flat_layer = Flatten()
+    # Network Architecture
+    cube_emb = cube_cnn(input_placeholder['windows'])
+    psf_emb = psf_cnn(input_placeholder['psf'])
+    dx, dy = dxdy_reg(cube_emb)
+    dflux  = flux_reg(psf_emb)
 
-	# Layers for psf
-	conv_2 = Conv2D(64, (3, 3), activation='relu', input_shape=[window_size, window_size, 1])
-	mp_2   = MaxPooling2D((2, 2))
-	conv_3 = Conv2D(32, (3, 3), activation='relu')
-	mp_3   = MaxPooling2D((2, 2))
-	flat_layer_2 = Flatten()
+    x = shift_op((input_placeholder['psf'], dx, dy, window_size))
 
-	# Layer to Merge
-	layer_norm_0 = LayerNormalization()
-	ffn_0 = Dense(128)
-	ffn_1 = Dense(3)
-
-	# Layer to separate parameters
-	trans_layer = TranslateCube()
-
-	# Network Architecture	
-	x = conv_0(input_placeholder['windows'])
-	x = mp_0(x)
-	x = conv_1(x)
-	x = mp_1(x)
-	cube_emb = flat_layer(x)
-
-	x = conv_2(input_placeholder['psf'])
-	x = mp_2(x)
-	x = conv_3(x)
-	x = mp_3(x)
-	psf_emb = flat_layer_2(x)
-
-	x = tf.concat([cube_emb, psf_emb], 1)
-	x = layer_norm_0(x)
-	x = ffn_0(x)
-	x = ffn_1(x)
-
-	# Getting parameters
-	dx = tf.slice(x, [0, 0], [-1, 1], name='dx')
-	dy = tf.slice(x, [0, 1], [-1, 1], name='dy')
-	dx = tf.math.maximum(dx, -window_size//3)
-	dy = tf.math.maximum(dy, -window_size//3)
-	dx = tf.math.minimum(dx, window_size//3)
-	dy = tf.math.minimum(dy, window_size//3)
-	dflux = tf.slice(x, [0, 2], [-1, 1], name='fluxes')
-
-	# Moving PSF If necessary
-	x = trans_layer((input_placeholder['psf'], dx, dy, window_size))
-
-	flux = input_placeholder['flux'] + tf.squeeze(dflux, axis=-1)
-	flux = tf.reshape(flux, [tf.shape(flux)[0], 1, 1])
-	x = tf.multiply(x, flux)
-
-	return CustomModel(inputs=input_placeholder, outputs=x, name="ConvNet")
+    flux = input_placeholder['flux'] + dflux
+    flux = tf.reshape(flux, [tf.shape(flux)[0], 1, 1])
+    x = tf.multiply(x, flux)
+    
+    x_params = (dx, dy, flux)
+    return CustomModel(inputs=input_placeholder, outputs=(x, x_params), name="ConvNet")
 
 
 class CustomModel(tf.keras.Model):
@@ -96,7 +59,7 @@ class CustomModel(tf.keras.Model):
     def train_step(self, data):
         x, y = data
         with tf.GradientTape() as tape:
-            y_pred = self(x, training=True)
+            y_pred, _ = self(x, training=True)
             loss = self.loss_fn(x['windows'], y_pred)
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
@@ -106,6 +69,14 @@ class CustomModel(tf.keras.Model):
     def test_step(self, data):
         x, y = data
         with tf.GradientTape() as tape:
-            y_pred = self(x, training=True)
+            y_pred, _ = self(x, training=True)
             loss = self.loss_fn(x['windows'], y_pred)
         return {'loss': loss}
+
+    @tf.function
+    def predict_step(self, data):
+        x, y = data
+        with tf.GradientTape() as tape:
+            y_pred, params  = self(x, training=True)
+            loss = self.loss_fn(x['windows'], y_pred)
+        return params

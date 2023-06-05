@@ -101,31 +101,33 @@ def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords):
 	return inputs, outputs
 
 
-def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, snr_threshold=2):
-	table = table[table['snr']>float(snr_threshold)]
-	numpy_table = table.values
-		
-	x_pos = numpy_table[:, 0]
-	y_pos = numpy_table[:, 1]
-	flux  = numpy_table[:, 2]
-	fwhm  = numpy_table[:, 3]
+def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, snr_threshold=2, repeat=1):
+    table = table[table['snr']>float(snr_threshold)]
+    numpy_table = table.values
 
-	x_rot, y_rot = get_rotated_coords(x_pos, y_pos, cube, rot_angles)
+    x_pos = numpy_table[:, 0]
+    y_pos = numpy_table[:, 1]
+    flux  = numpy_table[:, 2]
+    fwhm  = numpy_table[:, 3]
 
-	cube = tf.expand_dims(cube, 0)
-	cube = tf.tile(cube, [numpy_table.shape[0], 1, 1, 1])
+    x_rot, y_rot = get_rotated_coords(x_pos, y_pos, cube, rot_angles)
 
-	psf = tf.expand_dims(psf, 0)
-	psf = tf.tile(psf, [numpy_table.shape[0], 1, 1, 1])
+    cube = tf.expand_dims(cube, 0)
+    cube = tf.tile(cube, [numpy_table.shape[0], 1, 1, 1])
 
-	rot_angles = tf.expand_dims(rot_angles, 0)
-	rot_angles = tf.tile(rot_angles, [numpy_table.shape[0], 1])
+    psf = tf.expand_dims(psf, 0)
+    psf = tf.tile(psf, [numpy_table.shape[0], 1, 1, 1])
 
-	ids = np.arange(numpy_table.shape[0], dtype=np.int32)
-	dataset = tf.data.Dataset.from_tensor_slices((x_rot, y_rot, flux, fwhm, cube, psf, ids))
-	dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
-	dataset = dataset.flat_map(select_and_flat)
-	dataset = dataset.map(create_input_dictonary)
-	dataset = dataset.batch(batch_size)
+    rot_angles = tf.expand_dims(rot_angles, 0)
+    rot_angles = tf.tile(rot_angles, [numpy_table.shape[0], 1])
 
-	return dataset
+    ids = np.arange(numpy_table.shape[0], dtype=np.int32)
+    dataset = tf.data.Dataset.from_tensor_slices((x_rot, y_rot, flux, fwhm, cube, psf, ids))
+    dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
+    dataset = dataset.flat_map(select_and_flat)
+    dataset = dataset.map(create_input_dictonary)
+    dataset = dataset.repeat(repeat)
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.cache()
+    dataset = dataset.prefetch(2)
+    return dataset
