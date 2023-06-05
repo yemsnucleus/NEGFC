@@ -7,7 +7,7 @@ gpu=$(lspci | grep -i '.* vga .* nvidia .*')
 shopt -s nocasematch
 if [[ $gpu == *' nvidia '* ]]; then
   echo GPU found
-  docker run --name astromer_v2 -it \
+  docker run --name negfc_cnn -it \
     --rm \
     --privileged=true \
     --mount "type=bind,src=$(pwd),dst=/home/" \
@@ -16,14 +16,15 @@ if [[ $gpu == *' nvidia '* ]]; then
     -p 6006:6006 \
     --gpus all \
     -e HOST="$(whoami)" \
-    astromer bash
+    negfc_cnn bash
 else
-  docker run -it --rm \
+  docker run --name negfc_cnn -it \
+    --rm \
     --privileged=true \
     --mount "type=bind,src=$(pwd),dst=/home/" \
     --workdir /home/ \
     -p 8888:8888 \
     -p 6006:6006 \
     -e HOST="$(whoami)" \
-    astromer bash
+    negfc_cnn bash
 fi
