@@ -17,27 +17,28 @@ dataset = create_dataset(cube,
                          psf, 
                          rot_angles, 
                          table, 
-                         window_size=20, 
-                         batch_size=2000, 
-                         repeat=10)
+                         window_size=33, 
+                         batch_size=128, 
+                         repeat=1)
 
-model = create_embedding_model(window_size=20)
+for x, y in dataset:
+	print(x['psf'].shape)
+	print(x['windows'].shape)
+# model = create_embedding_model(window_size=20)
 
-optimizer = Adam(1)
-model.compile(loss_fn=get_companion_std, optimizer=optimizer)
+# optimizer = Adam(1)
+# model.compile(loss_fn=get_companion_std, optimizer=optimizer)
 
-es = tf.keras.callbacks.EarlyStopping(
-        monitor='loss',
-        min_delta=1e-4,
-        patience=20,
-        mode='minimize',
-        restore_best_weights=True,
-        start_from_epoch=0
-    )
+# es = tf.keras.callbacks.EarlyStopping(
+#         monitor='loss',
+#         min_delta=1e-4,
+#         patience=20,
+#         mode='minimize',
+#         restore_best_weights=True,
+#     )
 
-model.fit(dataset, epochs=1000, callbacks=[es])
+# model.fit(dataset, epochs=1000, callbacks=[es])
 
-print(model.trainable_variables)
 
 # print(model.summary())
 

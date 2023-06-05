@@ -48,9 +48,14 @@ def get_window(frame, x, y, size):
 	y = tf.cast(y, tf.int32)
 	width, height = frame.shape
 	start_w = tf.maximum(0, y - size//2)
-	end_w   = tf.minimum(width, y + size//2 + 1)
 	start_h = tf.maximum(0, x - size//2)
-	end_h   = tf.minimum(height, x + size//2 + 1)
+	if size % 2 != 0:
+		end_w   = tf.minimum(width, y + size//2+1)
+		end_h   = tf.minimum(height, x + size//2+1)
+	else:
+		end_w   = tf.minimum(width, y + size//2)
+		end_h   = tf.minimum(height, x + size//2)
+
 	# Cut the window from the cube
 	window = tf.slice(frame, [start_w, start_h], [end_w - start_w, end_h - start_h])
 	return window

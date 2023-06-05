@@ -4,14 +4,14 @@ import tensorflow as tf
 from tensorflow.keras.layers import Input, Layer
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, LayerNormalization
 
-@tf.function
+# @tf.function
 def translate_image(inputs):
 	inp_tensor, dx, dy, winsize = inputs
+	print(inp_tensor.shape)
 	cords = tf.stack([dx, dy], 1)
 	inp_tensor = tf.squeeze(inp_tensor, -1)
 	cords = tf.squeeze(cords)
 	out = tfa.image.translate(inp_tensor, cords)
-
 	# ---- OLD CODE ---
 	# inp_tensor = tf.reshape(inp_tensor, [winsize, winsize, 1])
 	# indices = tf.where(inp_tensor)
@@ -39,18 +39,18 @@ def translate_image(inputs):
 	return out
 
 class TranslateCube(Layer):
-    def __init__(self, name='shift'):
-        super(TranslateCube, self).__init__(name=name)
+	def __init__(self, name='shift'):
+		super(TranslateCube, self).__init__(name=name)
 
-    def call(self, inputs):
-        images = inputs[0]
-        dx = inputs[1]
-        dy = inputs[2]
-        winsize = inputs[3]
-        winsize = tf.tile(tf.expand_dims(winsize, 0), [tf.shape(dx)[0]])
+	def call(self, inputs):
+		images = inputs[0]
+		dx = inputs[1]
+		dy = inputs[2]
+		winsize = inputs[3]
+		winsize = tf.tile(tf.expand_dims(winsize, 0), [tf.shape(dx)[0]])
 
-        x = tf.map_fn(lambda x: translate_image(x), (images, dx, dy, winsize), fn_output_signature=tf.float32)
-        return x
+		x = tf.map_fn(lambda x: translate_image(x), (images, dx, dy, winsize), fn_output_signature=tf.float32)
+		return x
 
 class PositionRegressor(Layer):
     def __init__(self, units, name='coords_reg'):
