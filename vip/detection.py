@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-
+from photutils.aperture import aperture_photometry, CircularAperture
 from vip_hci.metrics.snr_source     import snr
 from astropy.stats 					import sigma_clipped_stats, gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 from .loss	 						import chisquare_mod, inject_fcs_cube_mod
@@ -98,10 +98,15 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
 		condyf = np.allclose(fit.y_mean.value, cy, atol=2)
 		condxf = np.allclose(fit.x_mean.value, cx, atol=2)
 		condmf = np.allclose(mean_fwhm_fit, fwhm, atol=3)
+
+		aper = CircularAperture((x, y), r=mean_fwhm_fit / 2.) 
+		obj_flux_i = aperture_photometry(frame, aper, method='exact')
+		obj_flux_i = obj_flux_i['aperture_sum'][0]
+
 		if fit.amplitude.value > 0 and condxf and condyf and condmf:
 			coords.append((suby + fit.y_mean.value,
 						   subx + fit.x_mean.value))
-			fluxes.append(fit.amplitude.value)
+			fluxes.append(obj_flux_i)
 			fwhm_mean.append(mean_fwhm_fit)
 
 	coords = np.array(coords)

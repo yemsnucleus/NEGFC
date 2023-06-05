@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import tensorflow as tf
 import numpy as np
 import os
 
@@ -350,27 +349,27 @@ def plot_region(frame, posx, posy, xx=None, yy=None):
         plt.scatter(xx, yy, marker='x', color='yellow', s=0.1, alpha=0.5)
     plt.show()
 
-def get_objective_region(cube, x, y, rot_ang, fwhm):
+# def get_objective_region(cube, x, y, rot_ang, fwhm):
     
-    w = tf.shape(cube)[-2]
-    h = tf.shape(cube)[-1] 
+#     w = tf.shape(cube)[-2]
+#     h = tf.shape(cube)[-1] 
     
-    mask = create_circular_mask(w, h, center=(x, y), radius=fwhm)
-    mask = tf.expand_dims(mask, 0)
+#     mask = create_circular_mask(w, h, center=(x, y), radius=fwhm)
+#     mask = tf.expand_dims(mask, 0)
     
     
-    if tf.rank(cube) > 2:
-        nframes = tf.shape(cube)[0]
-        mask = tf.tile(mask, [nframes, 1, 1])
-        cube_rot = rotate_cube(cube, rot_ang=rot_ang, derotate='tf')
-        cube_rot = tf.squeeze(cube_rot)
-        objetive_reg =  cube_rot * mask
-        objetive_reg = tf.reshape(objetive_reg, [nframes, w, h])
-        assert objetive_reg.shape == cube.shape
+#     if tf.rank(cube) > 2:
+#         nframes = tf.shape(cube)[0]
+#         mask = tf.tile(mask, [nframes, 1, 1])
+#         cube_rot = rotate_cube(cube, rot_ang=rot_ang, derotate='tf')
+#         cube_rot = tf.squeeze(cube_rot)
+#         objetive_reg =  cube_rot * mask
+#         objetive_reg = tf.reshape(objetive_reg, [nframes, w, h])
+#         assert objetive_reg.shape == cube.shape
     
-    else:
-        cube_rot = cube
-        objetive_reg =  cube_rot * mask
+#     else:
+#         cube_rot = cube
+#         objetive_reg =  cube_rot * mask
 
-    return  objetive_reg    
+#     return  objetive_reg    
     
