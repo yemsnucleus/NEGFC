@@ -8,7 +8,7 @@ from src.losses import get_companion_std
 
 from tensorflow.keras.optimizers import Adam
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 cube, psf, rot_angles, table = preprocess_folder(root='./data/fake', 
 												 target_folder='./data/fake/preprocessed')
@@ -24,20 +24,21 @@ dataset = create_dataset(cube,
 for x, y in dataset:
 	print(x['psf'].shape)
 	print(x['windows'].shape)
-# model = create_embedding_model(window_size=20)
 
-# optimizer = Adam(1)
-# model.compile(loss_fn=get_companion_std, optimizer=optimizer)
+model = create_embedding_model(window_size=33)
 
-# es = tf.keras.callbacks.EarlyStopping(
-#         monitor='loss',
-#         min_delta=1e-4,
-#         patience=20,
-#         mode='minimize',
-#         restore_best_weights=True,
-#     )
+optimizer = Adam(1)
+model.compile(loss_fn=get_companion_std, optimizer=optimizer)
 
-# model.fit(dataset, epochs=1000, callbacks=[es])
+es = tf.keras.callbacks.EarlyStopping(
+         monitor='loss',
+         min_delta=1e-4,
+         patience=20,
+         mode='minimize',
+         restore_best_weights=True,
+     )
+
+model.fit(dataset, epochs=1000, callbacks=[es])
 
 
 # print(model.summary())
