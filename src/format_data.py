@@ -110,6 +110,18 @@ def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords):
 	}
 	return inputs, outputs
 
+def augment_dataset(windows, psf, flux, cube, fwhm, ids, coords):
+	rotated = tf.keras.preprocessing.image.random_rotation(
+		psf,
+		rg,
+		row_axis=0,
+		col_axis=1,
+		channel_axis=2,
+		fill_mode='nearest',
+		cval=0.0,
+		interpolation_order=1
+	)
+	return windows, rotated, flux, cube, fwhm, ids, coords)
 
 def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, repeat=1):    
     numpy_table = table.values
@@ -135,8 +147,9 @@ def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, 
     dataset = tf.data.Dataset.from_tensor_slices((x_rot, y_rot, flux, fwhm, cube, psf, ids))
     dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
     dataset = dataset.flat_map(select_and_flat)
-    dataset = dataset.map(create_input_dictonary)
+    dataset = dataset.map(augment_dataset)
     dataset = dataset.repeat(repeat)
+    dataset = dataset.map(create_input_dictonary)
     dataset = dataset.batch(batch_size)
     dataset = dataset.cache()
     dataset = dataset.prefetch(2)
