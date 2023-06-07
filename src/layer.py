@@ -57,6 +57,23 @@ class FluxRegressor(Layer):
         x = self.ffn_1(x)
         x = tf.squeeze(x, axis=-1)
         return x
+
+class FluxPosRegressor(Layer):
+	def __init__(self, units, name='flux_reg'):
+		super(FluxPosRegressor, self).__init__(name=name)
+		self.units = units
+		self.norm = LayerNormalization()
+		self.ffn_0 = Dense(units)
+		self.ffn_1 = Dense(units//2)
+		self.ffn_2 = Dense(1, name='regressor')
+
+	def call(self, inputs):
+		x = tf.concat(inputs, 1)
+		x = self.norm(x) 
+		x = self.ffn_0(x) 
+		x = self.ffn_1(x)
+		x = self.ffn_2(x) 
+		return x
     
 class CubeConvBlock(Layer):
     def __init__(self, window_size, name='cube_cnn'):

@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from src.preprocess import preprocess_folder
 from src.format_data import create_dataset
-from src.model import create_embedding_model
+from src.model import create_embedding_model, create_flux_model
 from src.losses import get_companion_std
 
 from tensorflow.keras.optimizers import Adam
@@ -19,14 +19,18 @@ dataset = create_dataset(cube,
                          table, 
                          window_size=33, 
                          batch_size=128, 
-                         repeat=1)
+                         repeat=2)
 
-for x, y in dataset:
-	print(x['psf'].shape)
-	print(x['windows'].shape)
+# N = 3
+# fig, axes = plt.subplots(N, 2)
+# for i, (x, y) in enumerate(dataset.unbatch().take(N)):
+#     axes[i][0].imshow(x['psf'] - x['windows'])
+#     axes[i][1].imshow(x['windows'])
+# plt.show()
 
-model = create_embedding_model(window_size=33)
+model = create_flux_model(window_size=33)
 
+# print(model.summary())
 optimizer = Adam(1)
 model.compile(loss_fn=get_companion_std, optimizer=optimizer)
 

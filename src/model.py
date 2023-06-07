@@ -2,7 +2,7 @@ import tensorflow as tf
 
 from tensorflow.keras.layers import Input
 from tensorflow.keras        import Model
-from .layer import TranslateCube, PositionRegressor, FluxRegressor, CubeConvBlock, PSFConvBlock
+from .layer import TranslateCube, PositionRegressor, FluxRegressor, CubeConvBlock, PSFConvBlock, FluxPosRegressor
 from .format_data import DTYPE
 
 def build_input(window_size):
@@ -18,8 +18,6 @@ def build_input(window_size):
 					 name='flux'),
 	}
 	return inputs
-
-
 
 def create_embedding_model(window_size):
 
@@ -46,6 +44,25 @@ def create_embedding_model(window_size):
     
     x_params = (dx, dy, flux)
     return CustomModel(inputs=input_placeholder, outputs=(x, x_params), name="ConvNet")
+
+def create_flux_model(window_size):
+
+	input_placeholder = build_input(window_size)
+
+	# Layers
+	cube_cnn = CubeConvBlock(window_size, name='cubeCNN')
+	psf_cnn  = PSFConvBlock(window_size, name='psfCNN')
+	regresor = FluxPosRegressor(128)
+
+	# Network Architecture
+	cube_emb = cube_cnn(input_placeholder['windows'])
+	psf_emb = psf_cnn(input_placeholder['psf'])
+	flux  = regresor([cube_emb, psf_emb])
+	flux = tf.reshape(flux, [-1, 1, 1, 1])
+	flux = tf.tile(flux, [1, window_size, window_size, 1])
+	x = input_placeholder['windows'] * flux
+
+	return CustomModel(inputs=input_placeholder, outputs=(x, flux), name="ConvNet")
 
 
 class CustomModel(tf.keras.Model):

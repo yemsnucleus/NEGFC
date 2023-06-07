@@ -96,10 +96,21 @@ def select_and_flat(x,y,flux, fwhm, cube, psf, windows, ids):
 	coords = tf.stack([x, y], 1)
 	return tf.data.Dataset.from_tensor_slices((windows, psf_flat, flux, cube, fwhm, ids, coords))
 
+def augment_dataset(windows, psf, flux, cube, fwhm, ids, coords):
+	windows = tf.expand_dims(windows, -1),
+	psf = tf.expand_dims(psf, -1),
+	rand_k = tf.random.uniform([1], minval=0, maxval=4, dtype=DTYPEINT)
+	rand_k = tf.squeeze(rand_k)
+	rotated_windows = tf.image.rot90(windows, k=rand_k, name=None)
+	rotated_psf = tf.image.rot90(psf, k=rand_k, name=None)
+	rotated_windows = tf.squeeze(rotated_windows, axis=0)
+	rotated_psf = tf.squeeze(rotated_psf, axis=0)
+	return rotated_windows, rotated_psf, flux, cube, fwhm, ids, coords
+
 def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords):
 	inputs = {
-		'windows': tf.expand_dims(windows, -1),
-		'psf':  tf.expand_dims(psf, -1),
+		'windows': windows,
+		'psf': psf,
 		'flux': flux,
 	}
 	outputs = {
@@ -110,18 +121,6 @@ def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords):
 	}
 	return inputs, outputs
 
-def augment_dataset(windows, psf, flux, cube, fwhm, ids, coords):
-	rotated = tf.keras.preprocessing.image.random_rotation(
-		psf,
-		rg,
-		row_axis=0,
-		col_axis=1,
-		channel_axis=2,
-		fill_mode='nearest',
-		cval=0.0,
-		interpolation_order=1
-	)
-	return windows, rotated, flux, cube, fwhm, ids, coords)
 
 def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, repeat=1):    
     numpy_table = table.values
@@ -147,10 +146,10 @@ def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, 
     dataset = tf.data.Dataset.from_tensor_slices((x_rot, y_rot, flux, fwhm, cube, psf, ids))
     dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
     dataset = dataset.flat_map(select_and_flat)
-    dataset = dataset.map(augment_dataset)
     dataset = dataset.repeat(repeat)
+    dataset = dataset.cache()
+    dataset = dataset.map(augment_dataset)
     dataset = dataset.map(create_input_dictonary)
     dataset = dataset.batch(batch_size)
-    dataset = dataset.cache()
     dataset = dataset.prefetch(2)
     return dataset

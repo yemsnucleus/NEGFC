@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 def get_companion_std(inputs, prediction):
-	residuals = tf.abs(tf.squeeze(inputs, axis=-1) - prediction)
+	residuals = tf.abs(inputs - prediction)
 	return tf.math.reduce_sum(residuals)
 
 def keep_back(inputs, prediction):
