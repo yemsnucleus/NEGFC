@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 
+DTYPE = tf.float32
+DTYPEINT = tf.int32
 def reshape_image(image, new_shape):
     # Get the current dimensions of the image
     current_height, current_width = tf.shape(image)[-2], tf.shape(image)[-1]
@@ -15,16 +17,16 @@ def reshape_image(image, new_shape):
         image = tf.pad(image, paddings)
     
     # If the new shape is smaller, crop the image
-    image = tf.cast(image, dtype=tf.float32)
+    image = tf.cast(image, dtype=DTYPE)
     return tf.slice(image, [current_height//2-new_shape//2, current_width//2-new_shape//2], [new_shape, new_shape])
 
 def get_rotated_coords(x_pos, y_pos, cube, rot_angles):
 	# Getting rotated coords
 	nframes, height, width = cube.shape
-	width = tf.cast(width, tf.float32)
-	height = tf.cast(height, tf.float32)
-	width_mid  = width/tf.constant(2., dtype=tf.float32)
-	height_mid = height/tf.constant(2., dtype=tf.float32)
+	width = tf.cast(width, DTYPE)
+	height = tf.cast(height, DTYPE)
+	width_mid  = width/tf.constant(2., dtype=DTYPE)
+	height_mid = height/tf.constant(2., dtype=DTYPE)
 
 	x_c = x_pos - width_mid # origin in the middle of the frame 
 	y_c = y_pos - height_mid # origin in the middle of the frame
@@ -33,7 +35,7 @@ def get_rotated_coords(x_pos, y_pos, cube, rot_angles):
 	radius = tf.expand_dims(radius, 1)
 
 	angle = tf.atan2(y_c, x_c) # radians
-	angle = angle/tf.constant(np.pi)*180.  # degrees
+	angle = angle/tf.constant(np.pi, dtype=DTYPE)*180.  # degrees
 	theta = tf.math.mod(angle, 360.) # bound up to 1 circumference  
 	theta = tf.expand_dims(theta, 1)
 	rot_theta = theta - rot_angles # rotate angles 
@@ -44,29 +46,32 @@ def get_rotated_coords(x_pos, y_pos, cube, rot_angles):
 	return x_s, y_s
 
 def get_window(frame, x, y, size):
-	x = tf.cast(x, tf.int32)
-	y = tf.cast(y, tf.int32)
-	width, height = frame.shape
-	start_w = tf.maximum(0, y - size//2)
-	start_h = tf.maximum(0, x - size//2)
-	if size % 2 != 0:
-		end_w   = tf.minimum(width, y + size//2+1)
-		end_h   = tf.minimum(height, x + size//2+1)
-	else:
-		end_w   = tf.minimum(width, y + size//2)
-		end_h   = tf.minimum(height, x + size//2)
+    x = tf.cast(x, DTYPEINT)
+    y = tf.cast(y, DTYPEINT)
+    size = tf.cast(size, DTYPEINT)
+    width, height = frame.shape
+    width = tf.cast(width, DTYPEINT)
+    height = tf.cast(height, DTYPEINT)
+    start_w = tf.maximum(tf.constant(0, dtype=DTYPEINT), y - size//2)
+    start_h = tf.maximum(tf.constant(0, dtype=DTYPEINT), x - size//2)
+    if size % 2 != 0:
+        end_w   = tf.minimum(width, y + size//2+1)
+        end_h   = tf.minimum(height, x + size//2+1)
+    else:
+        end_w   = tf.minimum(width, y + size//2)
+        end_h   = tf.minimum(height, x + size//2)
 
-	# Cut the window from the cube
-	window = tf.slice(frame, [start_w, start_h], [end_w - start_w, end_h - start_h])
-	return window
+    # Cut the window from the cube
+    window = tf.slice(frame, [start_w, start_h], [end_w - start_w, end_h - start_h])
+    return window
 
 def cut_patches(x, y, flux, fwhm, cube, psf, ids, size=15):
 	windows = tf.map_fn(lambda x: get_window(x[0], x[1], x[2], size),
 			  			(cube, x, y),
-			  			fn_output_signature=tf.float32)
+			  			fn_output_signature=DTYPE)
 
 	psf_new_shape = tf.map_fn(lambda x: reshape_image(x, tf.shape(windows)[-1]), psf, 
-						 fn_output_signature=tf.float32)
+						 fn_output_signature=DTYPE)
 
 	return x, y, flux, fwhm, cube, psf_new_shape, windows, ids
 
@@ -79,13 +84,13 @@ def select_and_flat(x,y,flux, fwhm, cube, psf, windows, ids):
 
 	n_frames = tf.shape(psf)[0]
 	n_psfs   = tf.shape(psf)[1]
-	step_slice = tf.cast(n_frames/n_psfs, tf.int32)
-	pivot = tf.range(0, n_frames, step_slice, dtype=tf.int32)
-	indices = tf.range(0, tf.shape(pivot)[0], dtype=tf.int32)
+	step_slice = tf.cast(n_frames/n_psfs, DTYPEINT)
+	pivot = tf.range(0, n_frames, step_slice, dtype=DTYPEINT)
+	indices = tf.range(0, tf.shape(pivot)[0], dtype=DTYPEINT)
 
-	psf = tf.cast(psf, tf.float32)
+	psf = tf.cast(psf, DTYPE)
 	psf_flat = tf.map_fn(lambda x: tf.slice(psf, [x[0], x[1], 0, 0], [step_slice, 1, -1, -1]),
-						(pivot, indices), fn_output_signature=tf.float32)
+						(pivot, indices), fn_output_signature=DTYPE)
 	psf_flat = tf.reshape(psf_flat, [n_frames, tf.shape(psf)[-2], tf.shape(psf)[-1]] )
 
 	coords = tf.stack([x, y], 1)
@@ -106,8 +111,7 @@ def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords):
 	return inputs, outputs
 
 
-def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, snr_threshold=2, repeat=1):
-    table = table[table['snr']>float(snr_threshold)]
+def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, repeat=1):    
     numpy_table = table.values
 
     x_pos = numpy_table[:, 0]
@@ -126,7 +130,8 @@ def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, 
     rot_angles = tf.expand_dims(rot_angles, 0)
     rot_angles = tf.tile(rot_angles, [numpy_table.shape[0], 1])
 
-    ids = np.arange(numpy_table.shape[0], dtype=np.int32)
+    ids = np.arange(numpy_table.shape[0])
+    
     dataset = tf.data.Dataset.from_tensor_slices((x_rot, y_rot, flux, fwhm, cube, psf, ids))
     dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
     dataset = dataset.flat_map(select_and_flat)

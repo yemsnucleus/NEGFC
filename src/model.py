@@ -3,17 +3,18 @@ import tensorflow as tf
 from tensorflow.keras.layers import Input
 from tensorflow.keras        import Model
 from .layer import TranslateCube, PositionRegressor, FluxRegressor, CubeConvBlock, PSFConvBlock
+from .format_data import DTYPE
 
 def build_input(window_size):
 	inputs = {
 		'windows': Input(shape=(window_size, window_size, 1),
-						 batch_size=None,
+						 batch_size=None, dtype=DTYPE,
 						 name='window'),
 		'psf': Input(shape=(window_size, window_size, 1),
-					 batch_size=None,
+					 batch_size=None, dtype=DTYPE,
 					 name='psf'),
 		'flux': Input(shape=(),
-					 batch_size=None,
+					 batch_size=None, dtype=DTYPE,
 					 name='flux'),
 	}
 	return inputs
@@ -38,8 +39,8 @@ def create_embedding_model(window_size):
     dflux  = flux_reg(psf_emb)
 
     x = shift_op((input_placeholder['psf'], dx, dy, window_size))
-
-    flux = input_placeholder['flux'] + dflux
+    x = tf.cast(x, DTYPE)
+    flux = input_placeholder['flux'] + tf.cast(dflux, DTYPE)
     flux = tf.reshape(flux, [tf.shape(flux)[0], 1, 1])
     x = tf.multiply(x, flux)
     
@@ -79,4 +80,4 @@ class CustomModel(tf.keras.Model):
         with tf.GradientTape() as tape:
             y_pred, params  = self(x, training=True)
             loss = self.loss_fn(x['windows'], y_pred)
-        return params
+        return y_pred, params
