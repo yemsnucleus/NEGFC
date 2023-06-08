@@ -41,6 +41,10 @@ class PositionRegressor(Layer):
         x = self.ffn_1(x)
         dx = tf.slice(x, [0, 0], [-1, 1], name='dx')
         dy = tf.slice(x, [0, 1], [-1, 1], name='dy')
+        
+        dx = tf.clip_by_value(dx, -1, 1)
+        dy = tf.clip_by_value(dy, -1, 1)
+        
         return dx, dy
     
 class FluxRegressor(Layer):
@@ -79,9 +83,9 @@ class CubeConvBlock(Layer):
     def __init__(self, window_size, name='cube_cnn'):
         super(CubeConvBlock, self).__init__(name=name)
         self.window_size = window_size
-        self.conv_0 = Conv2D(64, (3, 3), activation='relu', input_shape=[window_size, window_size, 1])
+        self.conv_0 = Conv2D(128, (3, 3), activation='relu', input_shape=[window_size, window_size, 1])
         self.mp_0   = MaxPooling2D((2, 2))
-        self.conv_1 = Conv2D(32, (3, 3), activation='relu')
+        self.conv_1 = Conv2D(64, (3, 3), activation='relu')
         self.mp_1   = MaxPooling2D((2, 2))
         self.flat_layer = Flatten()
 
@@ -97,9 +101,9 @@ class PSFConvBlock(Layer):
     def __init__(self, window_size, name='psf_cnn'):
         super(PSFConvBlock, self).__init__(name=name)
         self.window_size = window_size
-        self.conv_0 = Conv2D(64, (3, 3), activation='relu', input_shape=[window_size, window_size, 1])
+        self.conv_0 = Conv2D(128, (3, 3), activation='relu', input_shape=[window_size, window_size, 1])
         self.mp_0   = MaxPooling2D((2, 2))
-        self.conv_1 = Conv2D(32, (3, 3), activation='relu')
+        self.conv_1 = Conv2D(64, (3, 3), activation='relu')
         self.mp_1   = MaxPooling2D((2, 2))
         self.flat_layer = Flatten()
 

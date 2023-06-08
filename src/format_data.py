@@ -109,8 +109,8 @@ def augment_dataset(windows, psf, flux, cube, fwhm, ids, coords):
 
 def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords):
 	inputs = {
-		'windows': windows,
-		'psf': psf,
+		'windows': tf.expand_dims(windows, -1),
+		'psf': tf.expand_dims(psf, -1),
 		'flux': flux,
 	}
 	outputs = {
@@ -147,9 +147,9 @@ def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, 
     dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
     dataset = dataset.flat_map(select_and_flat)
     dataset = dataset.repeat(repeat)
-    dataset = dataset.cache()
-    dataset = dataset.map(augment_dataset)
+#     dataset = dataset.map(augment_dataset)
     dataset = dataset.map(create_input_dictonary)
     dataset = dataset.batch(batch_size)
+    dataset = dataset.cache()
     dataset = dataset.prefetch(2)
     return dataset

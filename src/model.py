@@ -26,8 +26,8 @@ def create_embedding_model(window_size):
     # Layers
     cube_cnn = CubeConvBlock(window_size, name='cubeCNN')
     psf_cnn  = PSFConvBlock(window_size, name='psfCNN')
-    dxdy_reg = PositionRegressor(units=64, name='dxdyREG')
-    flux_reg = FluxRegressor(units=64, name='fluxREG')
+    dxdy_reg = PositionRegressor(units=128, name='dxdyREG')
+    flux_reg = FluxRegressor(units=128, name='fluxREG')
     shift_op = TranslateCube(name='shift')
 
     # Network Architecture
@@ -38,10 +38,13 @@ def create_embedding_model(window_size):
 
     x = shift_op((input_placeholder['psf'], dx, dy, window_size))
     x = tf.cast(x, DTYPE)
-    flux = input_placeholder['flux'] + tf.cast(dflux, DTYPE)
-    flux = tf.reshape(flux, [tf.shape(flux)[0], 1, 1])
-    x = tf.multiply(x, flux)
+    x = tf.expand_dims(x, axis=-1)
     
+    flux = input_placeholder['flux'] + tf.cast(dflux, DTYPE)
+    flux = tf.reshape(flux, [-1, 1, 1, 1])
+    flux = tf.tile(flux, [1, window_size, window_size, 1])
+
+    x = x * flux    
     x_params = (dx, dy, flux)
     return CustomModel(inputs=input_placeholder, outputs=(x, x_params), name="ConvNet")
 
@@ -60,7 +63,7 @@ def create_flux_model(window_size):
 	flux  = regresor([cube_emb, psf_emb])
 	flux = tf.reshape(flux, [-1, 1, 1, 1])
 	flux = tf.tile(flux, [1, window_size, window_size, 1])
-	x = input_placeholder['windows'] * flux
+	x = input_placeholder['psf'] * flux
 
 	return CustomModel(inputs=input_placeholder, outputs=(x, flux), name="ConvNet")
 
@@ -78,7 +81,7 @@ class CustomModel(tf.keras.Model):
         x, y = data
         with tf.GradientTape() as tape:
             y_pred, _ = self(x, training=True)
-            loss = self.loss_fn(x['windows'], y_pred)
+            loss = self.loss_fn(x['windows'], y_pred, fwhm=y['fwhm'])
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         return {'loss': loss}
@@ -88,7 +91,7 @@ class CustomModel(tf.keras.Model):
         x, y = data
         with tf.GradientTape() as tape:
             y_pred, _ = self(x, training=True)
-            loss = self.loss_fn(x['windows'], y_pred)
+            loss = self.loss_fn(x['windows'], y_pred, fwhm=y['fwhm'])
         return {'loss': loss}
 
     @tf.function
@@ -96,5 +99,5 @@ class CustomModel(tf.keras.Model):
         x, y = data
         with tf.GradientTape() as tape:
             y_pred, params  = self(x, training=True)
-            loss = self.loss_fn(x['windows'], y_pred)
+            loss = self.loss_fn(x['windows'], y_pred, fwhm=y['fwhm'])
         return y_pred, params

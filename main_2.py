@@ -13,13 +13,14 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 cube, psf, rot_angles, table = preprocess_folder(root='./data/fake', 
 												 target_folder='./data/fake/preprocessed')
 
+window_size = 20
 dataset = create_dataset(cube, 
                          psf, 
                          rot_angles, 
                          table, 
-                         window_size=33, 
-                         batch_size=128, 
-                         repeat=2)
+                         window_size=window_size, 
+                         batch_size=2000, 
+                         repeat=10)
 
 # N = 3
 # fig, axes = plt.subplots(N, 2)
@@ -28,16 +29,16 @@ dataset = create_dataset(cube,
 #     axes[i][1].imshow(x['windows'])
 # plt.show()
 
-model = create_flux_model(window_size=33)
+model = create_flux_model(window_size=window_size)
 
 # print(model.summary())
-optimizer = Adam(1)
+optimizer = Adam(1e-3)
 model.compile(loss_fn=get_companion_std, optimizer=optimizer)
 
 es = tf.keras.callbacks.EarlyStopping(
          monitor='loss',
          min_delta=1e-4,
-         patience=20,
+         patience=50,
          mode='minimize',
          restore_best_weights=True,
      )
