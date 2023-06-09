@@ -114,3 +114,33 @@ class PSFConvBlock(Layer):
         x = self.mp_1(x)
         x = self.flat_layer(x)
         return x
+
+class FakeLayerGenerator(Layer):
+    def __init__(self, name='coords_reg'):
+        super(FakeLayerGenerator, self).__init__(name=name)
+        self.translate = TranslateCube()
+
+    def build(self, input_shape):  # Create the state of the layer (weights)
+        init_x = tf.constant(self.init_x, shape=(1), dtype=tf.float32)
+        self.dx = tf.Variable(shape=(1),
+                             initial_value=init_x,
+                             trainable=True, 
+                             name='xcord')
+        
+        init_y = tf.constant(self.init_y, shape=(1), dtype=tf.float32)
+        self.dy = tf.Variable(shape=(1),
+                             initial_value=init_y,
+                             trainable=True, 
+                             name='ycord')
+
+    def call(self, inputs):
+        x = self.norm(inputs) 
+        x = self.ffn_0(x) 
+        x = self.ffn_1(x)
+        dx = tf.slice(x, [0, 0], [-1, 1], name='dx')
+        dy = tf.slice(x, [0, 1], [-1, 1], name='dy')
+        
+        dx = tf.clip_by_value(dx, -1, 1)
+        dy = tf.clip_by_value(dy, -1, 1)
+        
+        return dx, dy
