@@ -31,8 +31,9 @@ def get_companion_std(inputs, prediction):
     residuals = tf.abs(inputs - prediction)
     return tf.math.reduce_sum(residuals)
 
+@tf.function
 def keep_back(inputs, prediction, fwhm):
-    inputs     = tf.cast(inputs, tf.float32)
+    inputs     = tf.cast(inputs['windows'], tf.float32)
     prediction = tf.cast(prediction, tf.float32)
     residuals  = tf.math.subtract(inputs, prediction)
     

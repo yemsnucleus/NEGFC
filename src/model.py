@@ -81,7 +81,7 @@ class CustomModel(tf.keras.Model):
         x, y = data
         with tf.GradientTape() as tape:
             y_pred, _ = self(x, training=True)
-            loss = self.loss_fn(x['windows'], y_pred, fwhm=y['fwhm'])
+            loss = self.loss_fn(y, y_pred, fwhm=y['fwhm'])
         grads = tape.gradient(loss, self.trainable_weights)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         return {'loss': loss}
@@ -91,7 +91,7 @@ class CustomModel(tf.keras.Model):
         x, y = data
         with tf.GradientTape() as tape:
             y_pred, _ = self(x, training=True)
-            loss = self.loss_fn(x['windows'], y_pred, fwhm=y['fwhm'])
+            loss = self.loss_fn(y, y_pred, fwhm=y['fwhm'])
         return {'loss': loss}
 
     @tf.function
@@ -99,5 +99,11 @@ class CustomModel(tf.keras.Model):
         x, y = data
         with tf.GradientTape() as tape:
             y_pred, params  = self(x, training=True)
-            loss = self.loss_fn(x['windows'], y_pred, fwhm=y['fwhm'])
+            loss = self.loss_fn(y, y_pred, fwhm=y['fwhm'])
+                      
+#         unique_ids, idx = tf.unique(y['ids'])  # Get unique values and indices
+
+#         output_pred = tf.dynamic_partition(y_pred, idx, tf.shape(unique_ids)[0])
+#         fluxes = tf.reduce_max(params, axis=[1,2,3])
+#         output_flux = tf.dynamic_partition(fluxes, idx, tf.shape(unique_ids)[0])
         return y_pred, params
