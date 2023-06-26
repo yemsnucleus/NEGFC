@@ -103,7 +103,7 @@ def preprocess_folder(root, target_folder):
 					 interpolation='lanczos4',
 					 svd_mode='lapack')
 
-		table = get_intersting_coords(fr_pca, psf, fwhm=4, bkg_sigma=5)
+		table = get_intersting_coords(fr_pca, psf, fwhm=4, bkg_sigma=3)
 
 		os.makedirs(target_folder, exist_ok=True)
 

@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow_probability as tfp
 import numpy as np
 
 DTYPE = tf.float32
@@ -96,24 +97,28 @@ def select_and_flat(x,y,flux, fwhm, cube, psf, windows, ids):
 	coords = tf.stack([x, y], 1)
 	return tf.data.Dataset.from_tensor_slices((windows, psf_flat, flux, cube, fwhm, ids, coords))
 
-
-def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords):
+@tf.function
+def create_input_dictonary(windows, psf, flux, cube, fwhm, ids, coords, q=15):
     windows = tf.expand_dims(windows, -1)
     inputs = {
         'windows': windows,
         'psf': tf.expand_dims(psf, -1),
         'flux': flux,
     }
+    
+    maximum = tfp.stats.percentile(windows, q=q)
+    back = tf.random.uniform(tf.shape(windows), minval=0., maxval=maximum)
+    
     outputs = {
         'fwhm': fwhm,
-        'windows': windows,
+        'windows': back,
         'ids': ids,
         'coords':coords
     }
     return inputs, outputs
 
 
-def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, repeat=1):    
+def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, repeat=1, back_q=20):    
     numpy_table = table.values
 
     x_pos = numpy_table[:, 0]
@@ -138,7 +143,7 @@ def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, 
     dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
     dataset = dataset.flat_map(select_and_flat)
     dataset = dataset.repeat(repeat)
-    dataset = dataset.map(create_input_dictonary)
+    dataset = dataset.map(lambda a,b,c,d,e,f,g: create_input_dictonary(a,b,c,d,e,f,g,q=back_q))
     dataset = dataset.batch(batch_size)
     dataset = dataset.cache()
     dataset = dataset.prefetch(2)

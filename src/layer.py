@@ -40,8 +40,7 @@ class PositionRegressor(Layer):
         x = self.ffn_0(x) 
         x = self.ffn_1(x)
         dx = tf.slice(x, [0, 0], [-1, 1], name='dx')
-        dy = tf.slice(x, [0, 1], [-1, 1], name='dy')
-        
+        dy = tf.slice(x, [0, 1], [-1, 1], name='dy')        
         dx = tf.clip_by_value(dx, -1, 1)
         dy = tf.clip_by_value(dy, -1, 1)
         
@@ -115,32 +114,62 @@ class PSFConvBlock(Layer):
         x = self.flat_layer(x)
         return x
 
-class FakeLayerGenerator(Layer):
-    def __init__(self, name='coords_reg'):
-        super(FakeLayerGenerator, self).__init__(name=name)
-        self.translate = TranslateCube()
-
-    def build(self, input_shape):  # Create the state of the layer (weights)
-        init_x = tf.constant(self.init_x, shape=(1), dtype=tf.float32)
-        self.dx = tf.Variable(shape=(1),
-                             initial_value=init_x,
-                             trainable=True, 
-                             name='xcord')
+class ConvolutionalLayer(Layer):
+    def __init__(self, window_size, name='coords_reg'):
+        super(ConvolutionalLayer, self).__init__(name=name)
+        self.window_size = window_size
+        self.conv_0 = Conv2D(128, (3, 3), activation='relu', input_shape=[window_size, window_size, 2])
+        self.norm_0 = LayerNormalization()
+        self.mp_0   = MaxPooling2D((2, 2))
+        self.conv_1 = Conv2D(64, (3, 3), activation='relu')
+        self.norm_1 = LayerNormalization()
+        self.mp_1   = MaxPooling2D((2, 2))
+        self.norm = LayerNormalization()
+        self.flat_layer = Flatten()
+        self.ffn_pos = Dense(2, activation='tanh')
+        self.ffn_flux = Dense(1, activity_regularizer=tf.keras.constraints.NonNeg())
         
-        init_y = tf.constant(self.init_y, shape=(1), dtype=tf.float32)
-        self.dy = tf.Variable(shape=(1),
-                             initial_value=init_y,
-                             trainable=True, 
-                             name='ycord')
-
     def call(self, inputs):
-        x = self.norm(inputs) 
-        x = self.ffn_0(x) 
-        x = self.ffn_1(x)
-        dx = tf.slice(x, [0, 0], [-1, 1], name='dx')
-        dy = tf.slice(x, [0, 1], [-1, 1], name='dy')
+        x = tf.concat([inputs['windows'], inputs['psf']], -1) 
+        x = tf.map_fn(lambda image: tf.image.per_image_standardization(image), x)
+        x = self.conv_0(x)
+        x = self.norm_0(x)
+        x = self.mp_0(x)
+        x = self.conv_1(x)
+        x = self.norm_1(x)
+        x = self.mp_1(x) 
+        x = self.norm(x)
+        x = self.flat_layer(x)
         
-        dx = tf.clip_by_value(dx, -1, 1)
-        dy = tf.clip_by_value(dy, -1, 1)
+        x_f = self.ffn_flux(x)
+        x_pos = self.ffn_pos(x)
         
-        return dx, dy
+        dx = tf.slice(x_pos, [0, 0], [-1, 1], name='dx')
+        dy = tf.slice(x_pos, [0, 1], [-1, 1], name='dy') 
+        dx = tf.clip_by_value(dx, -.5, .5)
+        dy = tf.clip_by_value(dy, -.5, .5)
+    
+        return dx,dy,x_f
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
