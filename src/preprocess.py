@@ -13,6 +13,22 @@ from vip_hci.fm import normalize_psf
 from vip_hci.psfsub import pca
 from vip.detection import get_intersting_coords
 
+def get_radius_theta(row, cube_shp):
+    height, width = cube_shp
+    
+    x = float(row['x']) - height//2
+    y = float(row['y']) - width//2
+    
+    radius = np.sqrt(x**2+y**2) # radius
+    angle  = np.arctan2(y, x)   # radians
+    angle  = angle/np.pi*180    # degrees
+    # Since atan2 return angles in between [0, 180] and [-180, 0],
+    # we convert the angle to refers a system of 360 degrees
+    theta0 = np.mod(angle, 360) 
+    
+    row['theta'] = theta0
+    row['radius'] = radius
+    return row
 
 def crop_and_shift(inputs):
 	shape = inputs.shape
@@ -125,5 +141,6 @@ def preprocess_folder(root, target_folder):
 
 		# Open initial very initial guess
 		table = pd.read_csv(os.path.join(target_folder, 'init_params.csv'))
-
+	
+	table = table.apply(lambda x: get_radius_theta(x, cube.shape[1:]), 1)
 	return cube, psf, rot_angles, table
