@@ -22,24 +22,24 @@ def create_model(window_size):
 
     input_placeholder = build_input(window_size)
 
-    cube_lstm = tf.keras.layers.ConvLSTM2D(filters=2, 
+    cube_lstm = tf.keras.layers.ConvLSTM2D(filters=4, 
                                            kernel_size=(2, 2), 
                                            strides=(1,1),
                                            data_format='channels_last',
                                            return_sequences=True,
                                            name='cube_lstm')
 
-    psf_lstm  = tf.keras.layers.ConvLSTM2D(filters=2, 
+    psf_lstm  = tf.keras.layers.ConvLSTM2D(filters=4, 
                                            kernel_size=(2, 2),
                                            strides=(1,1), 
                                            data_format='channels_last',
                                            return_sequences=True,
                                            name='psf_lstm')
-    avg_layer = tf.keras.layers.Average()
+    avg_layer = tf.keras.layers.Average(name='average')
 
-    ffn_0 = tf.keras.layers.Dense(256, name='dense_0')
-    ffn_1 = tf.keras.layers.Dense(128, name='dense_1')
-    ffn_2 = tf.keras.layers.Dense(64, name='dense_2')
+    ffn_0 = tf.keras.layers.Dense(512, name='dense_0')
+    ffn_1 = tf.keras.layers.Dense(256, name='dense_1')
+    ffn_2 = tf.keras.layers.Dense(128, name='dense_2')
     flux_reg = tf.keras.layers.Dense(1, name='flux_reg')
     # dpos_reg = tf.keras.layers.Dense(2, name='dpos_reg')
     # shift_op = TranslateCube(name='shift')
