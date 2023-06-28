@@ -9,12 +9,12 @@ from src.model import create_model
 from src.losses import reduce_std
 
 from tensorflow.keras.optimizers import Adam
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[1]
 
 # [150, 130, 100, 200, 165, 176]
 # [500, 1000, 800, 300, 400, 700]
 
-name_ds = 'f_dhtau'
+name_ds = sys.argv[2]
 window_size = 50 
 WEIGHTS_FOLDER = './logs/test_{}'.format(name_ds)
 
