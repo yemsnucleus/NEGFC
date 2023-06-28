@@ -11,18 +11,28 @@ from src.losses import reduce_std
 from tensorflow.keras.optimizers import Adam
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
+# [150, 130, 100, 200, 165, 176]
+# [500, 1000, 800, 300, 400, 700]
+
+name_ds = 'f_dhtau'
 window_size = 50 
-WEIGHTS_FOLDER = './logs/test'
-# cube, psf, rot_angles, table = preprocess_folder(root='./data/f_dhtau', 
-#                                                  target_folder='./data/f_dhtau/preprocessed')
+WEIGHTS_FOLDER = './logs/test_{}'.format(name_ds)
 
-# save_records(cube, psf, rot_angles, table, 
-#              output_path='./data/records/f_dhtau', 
-#              window_size=50,
-#              train_val_test=(0.5, 0.2, 0.3))
+if not os.path.exists('./data/records/{}/fold_0/train'.format(name_ds)):
+    cube, psf, rot_angles, table = preprocess_folder(root='./data/{}'.format(name_ds), 
+                                                     target_folder='./data/{}/preprocessed'.format(name_ds))
 
-train_ds = load_records('./data/records/f_dhtau/fold_0/train', batch_size=10, repeat=10)
-val_ds = load_records('./data/records/f_dhtau/fold_0/val')
+    snrthreshold = input('Enter a SNR threshoold to filter the table: ')
+
+    save_records(cube, psf, rot_angles, table, 
+                 output_path='./data/records/{}'.format(name_ds), 
+                 snr_threshold=float(snrthreshold),
+                 window_size=50,
+                 train_val_test=(0.5, 0.2, 0.3))
+
+
+train_ds = load_records('./data/records/{}/fold_0/train'.format(name_ds), batch_size=10, repeat=10)
+val_ds = load_records('./data/records/{}/fold_0/val'.format(name_ds))
 
 model = create_model(window_size=window_size)
 
