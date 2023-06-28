@@ -32,7 +32,7 @@ if not os.path.exists('./data/records/{}/fold_0/train'.format(name_ds)):
                  train_val_test=(0.5, 0.2, 0.3))
 
 
-train_ds = load_records('./data/records/{}/fold_0/train'.format(name_ds), batch_size=10, repeat=10)
+train_ds = load_records('./data/records/{}/fold_0/train'.format(name_ds), batch_size=256, repeat=50)
 val_ds = load_records('./data/records/{}/fold_0/val'.format(name_ds))
 
 model = create_model(window_size=window_size)
