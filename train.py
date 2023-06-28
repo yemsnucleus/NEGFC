@@ -1,5 +1,7 @@
 import tensorflow as tf
 import matplotlib.pyplot as plt 
+import pandas as pd
+import numpy as np
 import sys
 import os
 
@@ -11,20 +13,21 @@ from src.losses import reduce_std
 from tensorflow.keras.optimizers import Adam
 os.environ["CUDA_VISIBLE_DEVICES"] = sys.argv[1]
 
-# [150, 130, 100, 200, 165, 176]
-# [500, 1000, 800, 300, 400, 700]
 
 name_ds = sys.argv[2]
 window_size = 50 
 WEIGHTS_FOLDER = './logs/test_{}'.format(name_ds)
 
 if not os.path.exists('./data/records/{}/fold_0/train'.format(name_ds)):
-    cube, psf, rot_angles, table = preprocess_folder(root='./data/{}'.format(name_ds), 
-                                                     target_folder='./data/{}/preprocessed'.format(name_ds))
+    cube, psf, rot_angles, table = preprocess_folder(
+        root='./data/{}'.format(name_ds), 
+        target_folder='./data/{}/preprocessed'.format(name_ds))
+    
 
-    print(table)
+    print(table[['flux', 'true_flux', 'snr']])
     snrthreshold = input('Enter a SNR threshoold to filter the table: ')
-
+    
+    
     save_records(cube, psf, rot_angles, table, 
                  output_path='./data/records/{}'.format(name_ds), 
                  snr_threshold=float(snrthreshold),
@@ -32,8 +35,12 @@ if not os.path.exists('./data/records/{}/fold_0/train'.format(name_ds)):
                  train_val_test=(0.5, 0.2, 0.3))
 
 
-train_ds = load_records('./data/records/{}/fold_0/train'.format(name_ds), batch_size=256, repeat=50)
-val_ds = load_records('./data/records/{}/fold_0/val'.format(name_ds))
+train_ds = load_records('./data/records/{}/fold_0/train'.format(name_ds), 
+                        batch_size=128, 
+                        repeat=100,
+                        augmentation=True)
+val_ds = load_records('./data/records/{}/fold_0/val'.format(name_ds),
+                      batch_size=128)
 
 model = create_model(window_size=window_size)
 
@@ -60,6 +67,12 @@ es = tf.keras.callbacks.EarlyStopping(
         mode='min',
         restore_best_weights=True,
     )
+tb = tf.keras.callbacks.TensorBoard(
+    log_dir=os.path.join(WEIGHTS_FOLDER, 'logs'),
+    histogram_freq=1,
+    write_graph=True,
+    write_images=True,
+    update_freq='epoch')
 
-hist = model.fit(train_ds, epochs=10000, validation_data=val_ds, callbacks=[es])
+hist = model.fit(train_ds, epochs=10000, validation_data=val_ds, callbacks=[es, tb])
 model.save_weights(os.path.join(WEIGHTS_FOLDER, 'weigths'))

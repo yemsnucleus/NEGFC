@@ -35,45 +35,46 @@ def cut_patch(inputs, x, y, window_size):
 	return patch
 
 def save_subset_records(cube, psf, rot_angles, table, output_path, window_size, njobs):
-	for index, row in table.iterrows():
-		pool = multiprocessing.Pool(processes=njobs)
-		partial_cut_patch = partial(cut_patch, x=row['x'], y=row['y'], window_size=window_size)
-		cube_crop = pool.map(partial_cut_patch, zip(cube, -rot_angles))
-		pool.close()
-		pool.join()
-		candidate = np.array(cube_crop, dtype='float32')
+    for index, row in table.iterrows():
+        pool = multiprocessing.Pool(processes=njobs)
+        partial_cut_patch = partial(cut_patch, x=row['x'], y=row['y'], window_size=window_size)
+        cube_crop = pool.map(partial_cut_patch, zip(cube, -rot_angles))
+        pool.close()
+        pool.join()
+        candidate = np.array(cube_crop, dtype='float32')
 
-		pool = multiprocessing.Pool(processes=njobs)
-		partial_cut_patch = partial(cut_patch, x=psf.shape[-1]//2, y=psf.shape[-1]//2, window_size=window_size)
-		psf_crop = pool.map(partial_cut_patch, zip(psf, -rot_angles))
-		pool.close()
-		pool.join()
-		psf_crop = np.array(psf_crop, dtype='float32')
-		
-		with tf.io.TFRecordWriter(os.path.join(output_path, '{}.record'.format(index))) as writer:
+        pool = multiprocessing.Pool(processes=njobs)
+        partial_cut_patch = partial(cut_patch, x=psf.shape[-1]//2, y=psf.shape[-1]//2, window_size=window_size)
+        psf_crop = pool.map(partial_cut_patch, zip(psf, -rot_angles))
+        pool.close()
+        pool.join()
+        psf_crop = np.array(psf_crop, dtype='float32')
 
-			psf_bytes  = psf_crop.tobytes()
-			cube_bytes = candidate.tobytes()
-			
-			depth_f = candidate.shape[-0] # number of frames
-			depth_p = psf_crop.shape[0] # number of psfs
+        with tf.io.TFRecordWriter(os.path.join(output_path, '{}.record'.format(index))) as writer:
 
-			width_f = candidate.shape[-1] # frame size
-			width_p = psf_crop.shape[-1] # psf size
+            psf_bytes  = psf_crop.tobytes()
+            cube_bytes = candidate.tobytes()
 
-			feature = {
-			'cube': _bytes_feature(cube_bytes),
-			'psf': _bytes_feature(psf_bytes),
-			'index': _int64_feature(index),
-			'depth_f': _int64_feature(depth_f),
-			'depth_p': _int64_feature(depth_p),
-			'width_f': _int64_feature(width_f),
-			'width_p': _int64_feature(width_p),
-			}
+            depth_f = candidate.shape[-0] # number of frames
+            depth_p = psf_crop.shape[0] # number of psfs
 
-			example = tf.train.Example(features=tf.train.Features(feature=feature))
-			writer.write(example.SerializeToString())
+            width_f = candidate.shape[-1] # frame size
+            width_p = psf_crop.shape[-1] # psf size
 
+            feature = {
+            'cube': _bytes_feature(cube_bytes),
+            'psf': _bytes_feature(psf_bytes),
+            'index': _int64_feature(index),
+            'depth_f': _int64_feature(depth_f),
+            'depth_p': _int64_feature(depth_p),
+            'width_f': _int64_feature(width_f),
+            'width_p': _int64_feature(width_p),
+            }
+
+            example = tf.train.Example(features=tf.train.Features(feature=feature))
+            writer.write(example.SerializeToString())
+    table.to_csv(os.path.join(output_path, 'true_values.csv'), index=False)
+    
 def save_records(cube, psf, rot_angles, table, output_path='./data/records', snr_threshold=10, 
 				 window_size=None, njobs=None, n_folds=1, train_val_test=(0.6, 0.2, 0.2)):
 
@@ -148,15 +149,16 @@ def augment(inputs):
 
 	return inputs
 
-def load_records(folder, batch_size=2, repeat=1):
-	record_files = [ os.path.join(folder, x) for x in os.listdir(folder) if x.endswith('.record') ]	
+def load_records(folder, batch_size=2, repeat=1, augmentation=False):
+    record_files = [ os.path.join(folder, x) for x in os.listdir(folder) if x.endswith('.record') ]	
 
-	dataset = tf.data.TFRecordDataset(record_files)
-	dataset = dataset.map(parse_candidate)
-	dataset = dataset.repeat(repeat)
-	dataset = dataset.map(augment)
-	dataset = dataset.batch(batch_size)
-	dataset = dataset.cache()
-	return dataset
+    dataset = tf.data.TFRecordDataset(record_files)
+    dataset = dataset.map(parse_candidate)
+    dataset = dataset.repeat(repeat)
+    if augmentation:
+        dataset = dataset.map(augment)
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.cache()
+    return dataset
 
 

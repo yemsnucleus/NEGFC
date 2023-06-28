@@ -107,41 +107,61 @@ def load_data(root, lambda_ch=0):
  						    verbose=False) 
 	return cube, psf_norm, rot_angles
 
+def find_closest_row_index(x_value, y_value, df_true):
+    """Finds the index of the row in another dataset that has the closest value x, y with the other one."""
+    distances = np.sqrt(((df_true['true_x'] - x_value)**2) + ((df_true['true_y'] - y_value)**2))
+    closest_row_index = distances.argmin()
+    return closest_row_index
+
 def preprocess_folder(root, target_folder):
-	if not os.path.isdir(target_folder):
-		print('[INFO] Preprocessing data')
-		cube, psf, rot_angles = load_data(root)
-		fr_pca = pca(cube, 
-					 rot_angles, 
-					 ncomp=5,
-					 mask_center_px=None, 
-					 imlib='opencv', # 'vip-fft'
-					 interpolation='lanczos4',
-					 svd_mode='lapack')
+    if not os.path.isdir(target_folder):
+        print('[INFO] Preprocessing data')
+        cube, psf, rot_angles = load_data(root)
+        fr_pca = pca(cube, 
+                     rot_angles, 
+                     ncomp=5,
+                     mask_center_px=None, 
+                     imlib='opencv', # 'vip-fft'
+                     interpolation='lanczos4',
+                     svd_mode='lapack')
 
-		table = get_intersting_coords(fr_pca, psf, fwhm=4, bkg_sigma=3)
+        table = get_intersting_coords(fr_pca, psf, fwhm=4, bkg_sigma=3)
 
-		os.makedirs(target_folder, exist_ok=True)
+        os.makedirs(target_folder, exist_ok=True)
 
-		for file, file_name in zip([cube, psf, rot_angles, fr_pca], ['center_im', 'median_unsat', 'rotnth', 'collapsed_pca']):
-			hdu = fits.PrimaryHDU(file)
-			hdu.writeto(os.path.join(target_folder, file_name+'.fits'), overwrite=True)
-		table.to_csv(os.path.join(target_folder, 'init_params.csv'), index=False)
-	else:
-		print('[INFO] Restoring saved values')
-		# Complete paths with dafault file names
-		cube_route = os.path.join(target_folder, 'center_im.fits')
-		psf_route  = os.path.join(target_folder, 'median_unsat.fits')
-		rot_route  = os.path.join(target_folder, 'rotnth.fits')
+        for file, file_name in zip([cube, psf, rot_angles, fr_pca], ['center_im', 'median_unsat', 'rotnth', 'collapsed_pca']):
+            hdu = fits.PrimaryHDU(file)
+            hdu.writeto(os.path.join(target_folder, file_name+'.fits'), overwrite=True)
+            
+            
+        true_table = pd.read_csv(os.path.join(root, 'true_values.csv'))
+        closest_indices = []
+        for index, row in table.iterrows():
+            closest = find_closest_row_index(row['x'], row['y'], true_table) 
+            ctt = true_table.iloc[closest]
+            closest_indices.append(ctt)
 
-		# Open FITS 
-		cube  = fits.getdata(cube_route, ext=0)
-		psf   = fits.getdata(psf_route, ext=0)
-		rot_angles = fits.getdata(rot_route, ext=0)
+        final = pd.DataFrame(closest_indices).reset_index()
+        final = pd.concat([table, final], axis=1, ignore_index=False, sort=False)
+    
+    
+        final.to_csv(os.path.join(target_folder, 'init_params.csv'), index=False)
+    else:
+        print('[INFO] Restoring saved values')
+        # Complete paths with dafault file names
+        cube_route = os.path.join(target_folder, 'center_im.fits')
+        psf_route  = os.path.join(target_folder, 'median_unsat.fits')
+        rot_route  = os.path.join(target_folder, 'rotnth.fits')
 
-		# Open initial very initial guess
-		table = pd.read_csv(os.path.join(target_folder, 'init_params.csv'))
-	
-	table = table.apply(lambda x: get_radius_theta(x, cube.shape[1:]), 1)
-	return cube, psf, rot_angles, table
+        # Open FITS 
+        cube  = fits.getdata(cube_route, ext=0)
+        psf   = fits.getdata(psf_route, ext=0)
+        rot_angles = fits.getdata(rot_route, ext=0)
+
+        # Open initial very initial guess
+        table = pd.read_csv(os.path.join(target_folder, 'init_params.csv'))
+
+    table = table.apply(lambda x: get_radius_theta(x, cube.shape[1:]), 1)
+
+    return cube, psf, rot_angles, table
 
