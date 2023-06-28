@@ -22,6 +22,7 @@ if not os.path.exists('./data/records/{}/fold_0/train'.format(name_ds)):
     cube, psf, rot_angles, table = preprocess_folder(root='./data/{}'.format(name_ds), 
                                                      target_folder='./data/{}/preprocessed'.format(name_ds))
 
+    print(table)
     snrthreshold = input('Enter a SNR threshoold to filter the table: ')
 
     save_records(cube, psf, rot_angles, table, 
