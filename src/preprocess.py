@@ -144,3 +144,4 @@ def preprocess_folder(root, target_folder):
 	
 	table = table.apply(lambda x: get_radius_theta(x, cube.shape[1:]), 1)
 	return cube, psf, rot_angles, table
+

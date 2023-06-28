@@ -6,3 +6,4 @@ data/*
 results/
 /user
 wandb/
+logs

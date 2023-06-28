@@ -84,3 +84,10 @@ def keep_back(inputs, outputs, params, prediction, decay_factor=2.):
     
     return 0.3*res_term + 0.7*back_term
 
+@tf.function
+def reduce_std(data, y_pred):
+    y_true = data['cube']
+
+    residuals = y_true - y_pred
+
+    return tf.math.reduce_std(residuals)
