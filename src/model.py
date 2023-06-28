@@ -17,6 +17,15 @@ def build_input(window_size):
 
 	return inputs
 
+def normalize_batch(batchj):
+    max_val = tf.reduce_max(batchj, axis=[2, 3])
+    max_val = tf.expand_dims(max_val, axis=2)
+    max_val = tf.expand_dims(max_val, axis=3)
+    min_val = tf.reduce_min(batchj, axis=[2, 3])
+    min_val = tf.expand_dims(min_val, axis=2)
+    min_val = tf.expand_dims(min_val, axis=3)
+    tensor = (batchj-min_val)/(max_val - min_val)
+    return tensor
 
 def create_model(window_size):
 
@@ -45,8 +54,10 @@ def create_model(window_size):
     # shift_op = TranslateCube(name='shift')
 
     # ==== flow ===
-    output_cube = cube_lstm(input_placeholder['cube'])    
-    output_psf  = psf_lstm(input_placeholder['psf'])
+    norm_cube = normalize_batch(input_placeholder['cube'])
+    norm_psf = normalize_batch(input_placeholder['psf'])
+    output_cube = cube_lstm(norm_cube)    
+    output_psf  = psf_lstm(norm_psf)
 
     output_cube = tf.reshape(output_cube, 
         [-1, tf.shape(output_cube)[1], tf.reduce_prod(tf.shape(output_cube)[2:])])

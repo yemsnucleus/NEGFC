@@ -21,24 +21,23 @@ WEIGHTS_FOLDER = './logs/test_{}'.format(name_ds)
 if not os.path.exists('./data/records/{}/fold_0/train'.format(name_ds)):
     cube, psf, rot_angles, table = preprocess_folder(
         root='./data/{}'.format(name_ds), 
-        target_folder='./data/{}/preprocessed'.format(name_ds))
+        target_folder='./data/{}/preprocessed'.format(name_ds))   
     
-
     print(table[['flux', 'true_flux', 'snr']])
     snrthreshold = input('Enter a SNR threshoold to filter the table: ')
-    
     
     save_records(cube, psf, rot_angles, table, 
                  output_path='./data/records/{}'.format(name_ds), 
                  snr_threshold=float(snrthreshold),
                  window_size=50,
-                 train_val_test=(0.5, 0.2, 0.3))
+                 train_val_test=(0.4, 0.3, 0.3))
 
 
 train_ds = load_records('./data/records/{}/fold_0/train'.format(name_ds), 
                         batch_size=128, 
-                        repeat=100,
+                        repeat=50,
                         augmentation=True)
+
 val_ds = load_records('./data/records/{}/fold_0/val'.format(name_ds),
                       batch_size=128)
 
@@ -57,7 +56,7 @@ model = create_model(window_size=window_size)
 #     loss = reduce_std(x, y_pred)
 #     print(loss)
 
-optimizer = Adam(1e-3)
+optimizer = Adam(1e-5)
 model.compile(loss_fn=reduce_std, optimizer=optimizer)
 
 es = tf.keras.callbacks.EarlyStopping(
