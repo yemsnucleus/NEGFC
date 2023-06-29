@@ -8,7 +8,7 @@ import sys
 import os
 
 from src.record import load_records
-from src.model import create_model
+from src.model import create_model, create_autoencoder
 from src.losses import shift_and_rmse
 
 from tensorflow.keras.optimizers import Adam
@@ -21,7 +21,8 @@ def run(opt):
     train_ds = load_records('{}/train.record'.format(opt.data), batch_size=opt.bs, augmentation=True)
     val_ds   = load_records('{}/val.record'.format(opt.data), batch_size=opt.bs, augmentation=True)
 
-    model = create_model(opt.ws)
+    # model = create_model(opt.ws)
+    model = create_autoencoder((63, 63, 1))
 
     # for x, y in train_ds:
 
