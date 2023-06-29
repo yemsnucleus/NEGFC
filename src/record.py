@@ -108,49 +108,56 @@ def save_records(cube, psf, rot_angles, table, output_path='./data/records', snr
 			save_subset_records(cube, psf, rot_angles, frame, new_output_path, window_size, njobs)
 
 
+# ===============================================================
 def parse_candidate(serialized_example):
 	feature_description = {
-		'cube': tf.io.FixedLenFeature([], tf.string),
-		'psf': tf.io.FixedLenFeature([], tf.string),
-		'index': tf.io.FixedLenFeature([], tf.int64),
-		'depth_f': tf.io.FixedLenFeature([], tf.int64),
-		'depth_p': tf.io.FixedLenFeature([], tf.int64),
-		'width_f': tf.io.FixedLenFeature([], tf.int64),
-		'width_p': tf.io.FixedLenFeature([], tf.int64),
+		'input': tf.io.FixedLenFeature([], tf.string),
+		'output': tf.io.FixedLenFeature([], tf.string),
+		'width': tf.io.FixedLenFeature([], tf.int64),
+		'height': tf.io.FixedLenFeature([], tf.int64),
 	}
 	example = tf.io.parse_single_example(serialized_example, feature_description)
 
 	# Decode the cube from bytes
-	cube = tf.io.decode_raw(example['cube'], tf.float32)
-	psf = tf.io.decode_raw(example['psf'], tf.float32)
+	x = tf.io.decode_raw(example['input'], tf.float32)
+	y = tf.io.decode_raw(example['output'], tf.float32)
 
-	cube = tf.reshape(cube, [example['depth_f'], example['width_f'], example['width_f'], 1])
-	psf = tf.reshape(psf, [example['depth_p'], example['width_p'], example['width_p'], 1])
-	psf = tf.slice(psf, [0, 0, 0, 0], [1, -1, -1, -1])
-	psf = tf.tile(psf, [example['depth_f'], 1, 1, 1])
-	return {'cube':cube, 'psf':psf}
+	x = tf.reshape(x, [example['width'], example['height'], 1])
+	y = tf.reshape(y, [example['width'], example['height'], 1])
 
-def augment(inputs):
+	return x, y
+
+def augment(x, y):
 	rnd_prob_rot = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
 	if rnd_prob_rot> 0.5:
 		rnd_k = tf.random.uniform([], minval=1, maxval=5, dtype=tf.int32)
-		inputs['cube'] = tf.map_fn(lambda x: tf.image.rot90(x, k=rnd_k), inputs['cube'])
-		inputs['psf'] = tf.map_fn(lambda x: tf.image.rot90(x, k=rnd_k), inputs['psf'])
+		x = tf.map_fn(lambda a: tf.image.rot90(a, k=rnd_k), x)
+		y = tf.map_fn(lambda a: tf.image.rot90(a, k=rnd_k), y)
 
 	rnd_prob_left_right = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
 	if rnd_prob_left_right > 0.5:
-		inputs['cube'] = tf.map_fn(lambda x: tf.image.flip_left_right(x), inputs['cube'])
-		inputs['psf'] = tf.map_fn(lambda x: tf.image.flip_left_right(x), inputs['psf'])
+		x = tf.map_fn(lambda a: tf.image.flip_left_right(a), x)
+		y = tf.map_fn(lambda a: tf.image.flip_left_right(a), y)
 	
 	rnd_prob_up_down = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
 	if rnd_prob_up_down > 0.5:
-		inputs['cube'] = tf.map_fn(lambda x: tf.image.flip_up_down(x), inputs['cube'])
-		inputs['psf'] = tf.map_fn(lambda x: tf.image.flip_up_down(x), inputs['psf'])
+		x = tf.map_fn(lambda a: tf.image.flip_up_down(a), x)
+		y = tf.map_fn(lambda a: tf.image.flip_up_down(a), y)
+
+	rnd_prob_flux = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
+	if rnd_prob_up_down > 0.5:
+		flux = tf.random.uniform([], minval=2, maxval=500, dtype=tf.float32)
+		x = x * flux
+		y = y * flux
 
 	return inputs
 
 def load_records(folder, batch_size=2, repeat=1, augmentation=False):
-    record_files = [ os.path.join(folder, x) for x in os.listdir(folder) if x.endswith('.record') ]	
+    
+    if folder.endswith('.record'):
+    	record_files = folder
+    else:
+    	record_files = [ os.path.join(folder, x) for x in os.listdir(folder) if x.endswith('.record') ]	
 
     dataset = tf.data.TFRecordDataset(record_files)
     dataset = dataset.map(parse_candidate)
@@ -159,6 +166,6 @@ def load_records(folder, batch_size=2, repeat=1, augmentation=False):
         dataset = dataset.map(augment)
     dataset = dataset.batch(batch_size)
     dataset = dataset.cache()
+    dataset = dataset.prefetch(2)
     return dataset
-
 

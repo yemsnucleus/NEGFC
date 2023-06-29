@@ -41,7 +41,7 @@ def crop_and_shift(inputs):
 	cropped = cube_crop_frames(shifted, newdim, xy=[int(ycen), int(xcen)], force=True)  
 	return cropped
 
-def load_data(root, lambda_ch=0):
+def load_data(root, lambda_ch=None):
 	# Complete paths with dafault file names
 	cube_route = os.path.join(root, 'center_im.fits')
 	psf_route  = os.path.join(root, 'median_unsat.fits')
@@ -53,59 +53,77 @@ def load_data(root, lambda_ch=0):
 	rot_angles = fits.getdata(rot_route, ext=0)
 	rot_angles = -rot_angles
 
-	# Store shapes and select wavelenght to work with  
-	cube_shp = cube[lambda_ch].shape
-	psf_shp  = psf_list[lambda_ch].shape
+	if lambda_ch is None:
+		lambda_ch = np.arange(psf_list.shape[0])
+		print('[INFO] channels: ',lambda_ch)
+	
+	if type(lambda_ch) == 'int':
+		lambda_ch = [lambda_ch]
 
-	# Check multiwave input cube
-	if len(cube_shp)<3:
-		cube = cube[None, ...]
-		cube_shp = cube.shape
-	if len(psf_shp)<3:
-		psf_list = psf_list[None, ...]
-		psf_shp = psf_list.shape
+	new_cube = []
+	new_psfs = []
+	for lmd_ch in lambda_ch:
+		# Store shapes and select wavelenght to work with  
+		cube_shp = cube[lmd_ch].shape
+		psf_shp  = psf_list[lmd_ch].shape
 
-	# Check even dimensions and correct if found
-	if cube_shp[-1] % 2 == 0:
-		cube = crop_and_shift(cube[lambda_ch])
-	else:
-		cube = cube[lambda_ch]
+		# Check multiwave input cube
+		if len(cube_shp)<3:
+			cube = np.tile(cube[None,...], (psf_list.shape[0], 1, 1, 1))
+			cube_shp = cube.shape
+			print(cube_shp)
 
-	if psf_shp[-1] % 2 == 0:
-		psf = crop_and_shift(psf_list[lambda_ch])
-	else:
-		psf = psf_list[lambda_ch]
+		if len(psf_shp)<3:
+			psf_list = psf_list[None, ...]
+			psf_shp = psf_list.shape
 
-	# PSF Normalization
-	fit = fit_2dgaussian(psf[0], 
-						 crop=True, 
-						 cropsize=30, 
-						 debug=False, 
-						 full_output=True)   
+		# Check even dimensions and correct if found
+		if cube_shp[-1] % 2 == 0:
+			cube = crop_and_shift(cube[lmd_ch])
+		else:
+			cube = cube[lmd_ch]
 
-	fwhm_sphere = np.mean([fit.fwhm_y, fit.fwhm_x])
-	y_cent, x_cent = frame_center(psf)
-	y_c=int(y_cent)
-	x_c=int(x_cent)
-	psf_center, y0_sh, x0_sh = cube_recenter_2dfit(psf, 
-												   (y_c, x_c), 
-												   fwhm_sphere,
-												   model='gauss',
-												   nproc=cpu_count()//2, 
-												   subi_size=7, 
-												   negative=False,
-												   full_output=True, 
-												   plot=False,
-												   debug=False)  
+		if psf_shp[-1] % 2 == 0:
+			psf = crop_and_shift(psf_list[lmd_ch])
+		else:
+			psf = psf_list[lmd_ch]
 
-	psf_norm = normalize_psf(psf_center, 
-							fwhm=fwhm_sphere, 
-							size=None, 
-							threshold=None, 
-							mask_core=None,
- 						    full_output=False, 
- 						    verbose=False) 
-	return cube, psf_norm, rot_angles
+		# PSF Normalization
+		fit = fit_2dgaussian(psf[0], 
+							 crop=True, 
+							 cropsize=30, 
+							 debug=False, 
+							 full_output=True)   
+
+		fwhm_sphere = np.mean([fit.fwhm_y, fit.fwhm_x])
+		y_cent, x_cent = frame_center(psf)
+		y_c=int(y_cent)
+		x_c=int(x_cent)
+		psf_center, y0_sh, x0_sh = cube_recenter_2dfit(psf, 
+													   (y_c, x_c), 
+													   fwhm_sphere,
+													   model='gauss',
+													   nproc=cpu_count()//2, 
+													   subi_size=7, 
+													   negative=False,
+													   full_output=True, 
+													   plot=False,
+													   debug=False)  
+
+		psf_norm = normalize_psf(psf_center, 
+								fwhm=fwhm_sphere, 
+								size=None, 
+								threshold=None, 
+								mask_core=None,
+	 						    full_output=False, 
+	 						    verbose=False) 
+		new_cube.append(cube)
+		new_psfs.append(psf_norm)
+
+	new_cube = np.array(new_cube)
+	new_psfs = np.array(new_psfs)
+
+	return new_cube, new_psfs, rot_angles
 
 def find_closest_row_index(x_value, y_value, df_true):
     """Finds the index of the row in another dataset that has the closest value x, y with the other one."""
@@ -143,8 +161,6 @@ def preprocess_folder(root, target_folder):
 
         final = pd.DataFrame(closest_indices).reset_index()
         final = pd.concat([table, final], axis=1, ignore_index=False, sort=False)
-    
-    
         final.to_csv(os.path.join(target_folder, 'init_params.csv'), index=False)
     else:
         print('[INFO] Restoring saved values')

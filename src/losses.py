@@ -1,3 +1,4 @@
+import tensorflow_addons as tfa
 import tensorflow as tf
 
 
@@ -58,10 +59,6 @@ def create_circle_mask(width, height, radii, decay_factor=2, xc=None, yc=None):
     masks = tf.expand_dims(masks, -1)
     return masks
 
-def get_companion_std(inputs, prediction):
-    residuals = tf.abs(inputs - prediction)
-    return tf.math.reduce_sum(residuals)
-
 def wrapper(fn, **kwargs):
     def inner(*args):
         out = fn(*args, **kwargs)
@@ -69,25 +66,6 @@ def wrapper(fn, **kwargs):
     return inner
 
 @tf.function
-def keep_back(inputs, outputs, params, prediction, decay_factor=2.):
-    inp_windows = tf.cast(inputs['windows'], tf.float32)
-    
-    mask   = create_circle_mask(tf.shape(inp_windows)[1], tf.shape(inp_windows)[2], 
-                                outputs['fwhm'], decay_factor=decay_factor, xc=params[0], yc=params[1])
-    
-    prediction = tf.cast(prediction, tf.float32)
-    residuals  = tf.math.subtract(inp_windows, prediction) * mask
-    res_term = tf.reduce_mean(tf.pow(residuals, 2))
-        
-    backres = tf.math.subtract(residuals, outputs['windows'])
-    back_term = tf.reduce_mean(tf.pow(backres, 2)) 
-    
-    return 0.3*res_term + 0.7*back_term
-
-@tf.function
-def reduce_std(data, y_pred):
-    y_true = data['cube']
-
-    residuals = y_true - y_pred
-
-    return tf.math.reduce_std(residuals)
+def shift_and_rmse(y, y_pred):
+    residuals = tf.pow(y - y_pred, 2)
+    return tf.reduce_mean(residuals) 

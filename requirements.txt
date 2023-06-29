@@ -4,3 +4,4 @@ vip_hci==1.2.2
 pandas
 hciplot
 notebook
+names
