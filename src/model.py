@@ -57,9 +57,9 @@ def create_model(window_size):
     input_placeholder = build_input(window_size)
     conv_block = ConvBlock(window_size, name='convnet')
     pos_regressor = PositionRegressor(name='posreg')
-    translate_layer = TranslationLayer(name='translation')
+    translate_layer = TranslationLayer(window_size, name='translation')
 
-    # x = normalize_batch(input_placeholder)
+#     x = normalize_batch(input_placeholder)
     x = conv_block(input_placeholder)
     dx, dy = pos_regressor(x)
     x = translate_layer(input_placeholder, dx, dy)

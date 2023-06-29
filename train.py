@@ -18,8 +18,8 @@ def run(opt):
     os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu
     WEIGHTS_FOLDER = os.path.join(opt.p, names.get_first_name())
 
-    train_ds = load_records('{}/train.record'.format(opt.data), batch_size=opt.bs)
-    val_ds   = load_records('{}/val.record'.format(opt.data), batch_size=opt.bs)
+    train_ds = load_records('{}/train.record'.format(opt.data), batch_size=opt.bs, augmentation=True)
+    val_ds   = load_records('{}/val.record'.format(opt.data), batch_size=opt.bs, augmentation=True)
 
     model = create_model(opt.ws)
 

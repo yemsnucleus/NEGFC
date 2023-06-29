@@ -128,29 +128,29 @@ def parse_candidate(serialized_example):
 	return x, y
 
 def augment(x, y):
-	rnd_prob_rot = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
-	if rnd_prob_rot> 0.5:
-		rnd_k = tf.random.uniform([], minval=1, maxval=5, dtype=tf.int32)
-		x = tf.map_fn(lambda a: tf.image.rot90(a, k=rnd_k), x)
-		y = tf.map_fn(lambda a: tf.image.rot90(a, k=rnd_k), y)
+    rnd_prob_rot = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
+    if rnd_prob_rot> 0.5:
+        rnd_k = tf.random.uniform([], minval=1, maxval=5, dtype=tf.int32)
+        x = tf.image.rot90(x, k=rnd_k)
+        y = tf.image.rot90(y, k=rnd_k)
 
-	rnd_prob_left_right = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
-	if rnd_prob_left_right > 0.5:
-		x = tf.map_fn(lambda a: tf.image.flip_left_right(a), x)
-		y = tf.map_fn(lambda a: tf.image.flip_left_right(a), y)
-	
-	rnd_prob_up_down = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
-	if rnd_prob_up_down > 0.5:
-		x = tf.map_fn(lambda a: tf.image.flip_up_down(a), x)
-		y = tf.map_fn(lambda a: tf.image.flip_up_down(a), y)
+    rnd_prob_left_right = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
+    if rnd_prob_left_right > 0.5:
+        x = tf.image.flip_left_right(x)
+        y = tf.image.flip_left_right(y)
 
-	rnd_prob_flux = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
-	if rnd_prob_up_down > 0.5:
-		flux = tf.random.uniform([], minval=2, maxval=500, dtype=tf.float32)
-		x = x * flux
-		y = y * flux
+    rnd_prob_up_down = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
+    if rnd_prob_up_down > 0.5:
+        x = tf.image.flip_up_down(x) 
+        y = tf.image.flip_up_down(y)
 
-	return inputs
+    rnd_prob_flux = tf.random.uniform([], minval=0, maxval=1, dtype=tf.float32)
+    if rnd_prob_up_down > 0.5:
+        flux = tf.random.uniform(tf.shape(x), minval=2, maxval=500, dtype=tf.float32)
+        x = x * flux
+        y = y * flux
+        
+    return x, y
 
 def load_records(folder, batch_size=2, repeat=1, augmentation=False):
     
