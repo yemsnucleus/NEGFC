@@ -103,8 +103,8 @@ def create_records(opt):
 			os.makedirs(target_subset, exist_ok=True)
 			with tf.io.TFRecordWriter(os.path.join(target_subset, subset_name+'.record')) as writer:
 				for  _ in range(nsamples):
-					x_shift = np.random.uniform(-subset.shape[-1]/3, subset.shape[-1]/3)
-					y_shift = np.random.uniform(-subset.shape[-2]/3, subset.shape[-2]/3)
+					x_shift = np.random.uniform(-5, 5)
+					y_shift = np.random.uniform(-5, 5)
 
 					num_psfs = subset.shape[0]
 					random_index = np.random.randint(num_psfs)
@@ -130,7 +130,7 @@ def create_records(opt):
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--target', default='./data/records/psf', type=str,
+	parser.add_argument('--target', default='./data/records/psf_2', type=str,
 	                help='Target folder where records will be stored')
 	parser.add_argument('--source', default='./data/real', type=str,
 	                help='Source folder containing datasets with PSFs')

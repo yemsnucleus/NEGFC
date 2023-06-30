@@ -68,4 +68,4 @@ def wrapper(fn, **kwargs):
 @tf.function
 def shift_and_rmse(y, y_pred):
     residuals = tf.pow(y - y_pred, 2)
-    return tf.reduce_mean(residuals) 
+    return tf.reduce_sum(residuals) 
