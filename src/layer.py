@@ -61,15 +61,15 @@ class PositionRegressor(Layer):
         x = self.ffn_0(x) 
         x = self.ffn_1(x)
         x = self.ffn_2(x)
-        dx = tf.slice(x, [0, 0], [-1, 1], name='dx')
-        dy = tf.slice(x, [0, 1], [-1, 1], name='dy')     
+        # dx = tf.slice(x, [0, 0], [-1, 1], name='dx')
+        # dy = tf.slice(x, [0, 1], [-1, 1], name='dy')     
 	
-        dx = tf.clip_by_value(dx, clip_value_min=20., clip_value_max=20.)
-        dy = tf.clip_by_value(dy, clip_value_min=20., clip_value_max=20.)
+        # dx = tf.clip_by_value(dx, clip_value_min=20., clip_value_max=20.)
+        # dy = tf.clip_by_value(dy, clip_value_min=20., clip_value_max=20.)
         
-        dx = tf.squeeze(dx, axis=-1)
-        dy = tf.squeeze(dy, axis=-1)
-        return dx, dy
+        # dx = tf.squeeze(dx, axis=-1)
+        # dy = tf.squeeze(dy, axis=-1)
+        return x
     
 class ConvBlock(Layer):
     def __init__(self, window_size, name='cube_cnn'):

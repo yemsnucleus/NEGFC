@@ -22,6 +22,7 @@ class CustomModel(Model):
             loss = self.loss_fn(y, y_pred)
 
         grads = tape.gradient(loss, self.trainable_weights)
+        # tf.print(grads)
         self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
         return {'loss': loss}
 
@@ -60,10 +61,9 @@ def create_model(window_size):
     pos_regressor = PositionRegressor(name='posreg')
     translate_layer = TranslationLayer(window_size, name='translation')
 
-#     x = normalize_batch(input_placeholder)
+    x = normalize_batch(input_placeholder)
     x = conv_block(input_placeholder)
-    dx, dy = pos_regressor(x)
-    y_pred = tf.stack([dx, dy], 1)
+    y_pred = pos_regressor(x)
     return CustomModel(inputs=input_placeholder, outputs=y_pred, name="PosRegressor")
 
 
