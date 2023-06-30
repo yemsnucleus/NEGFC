@@ -75,10 +75,12 @@ class ConvBlock(Layer):
     def __init__(self, window_size, name='cube_cnn'):
         super(ConvBlock, self).__init__(name=name)
         self.window_size = window_size
-        self.conv_0 = Conv2D(128, (3, 3), activation='relu', input_shape=[window_size, window_size, 1])
+        self.conv_0 = Conv2D(128, (2, 2), activation='relu', input_shape=[window_size, window_size, 1])
         self.mp_0   = MaxPooling2D((2, 2))
-        self.conv_1 = Conv2D(64, (3, 3), activation='relu')
+        self.conv_1 = Conv2D(64, (2, 2), activation='relu')
         self.mp_1   = MaxPooling2D((2, 2))
+        self.conv_2 = Conv2D(32, (2, 2), activation='relu')
+        self.mp_2   = MaxPooling2D((2, 2))
         self.flat_layer = Flatten()
 
     def call(self, inputs):
@@ -86,6 +88,8 @@ class ConvBlock(Layer):
         x = self.mp_0(x)
         x = self.conv_1(x)
         x = self.mp_1(x)
+        x = self.conv_2(x)
+        x = self.mp_2(x)
         x = self.flat_layer(x)
         return x
     

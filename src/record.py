@@ -112,7 +112,8 @@ def save_records(cube, psf, rot_angles, table, output_path='./data/records', snr
 def parse_candidate(serialized_example):
 	feature_description = {
 		'input': tf.io.FixedLenFeature([], tf.string),
-		'output': tf.io.FixedLenFeature([], tf.string),
+		'xcoor': tf.io.FixedLenFeature([], tf.int64),
+		'ycoor': tf.io.FixedLenFeature([], tf.int64),
 		'width': tf.io.FixedLenFeature([], tf.int64),
 		'height': tf.io.FixedLenFeature([], tf.int64),
 	}
@@ -120,10 +121,9 @@ def parse_candidate(serialized_example):
 
 	# Decode the cube from bytes
 	x = tf.io.decode_raw(example['input'], tf.float32)
-	y = tf.io.decode_raw(example['output'], tf.float32)
-
 	x = tf.reshape(x, [example['width'], example['height'], 1])
-	y = tf.reshape(y, [example['width'], example['height'], 1])
+
+	y = [example['xcoor'], example['ycoor']]
 
 	return x, y
 

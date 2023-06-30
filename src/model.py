@@ -63,44 +63,8 @@ def create_model(window_size):
 #     x = normalize_batch(input_placeholder)
     x = conv_block(input_placeholder)
     dx, dy = pos_regressor(x)
-    x = translate_layer(input_placeholder, dx, dy)
-
-    return CustomModel(inputs=input_placeholder, outputs=x, name="PosRegressor")
-
-
-# ==========================================
-# Encoder
-def build_encoder(input_shape):
-    input_layer = Input(shape=input_shape)
-    x = Conv2D(32, (3, 3), activation='relu', padding='same')(input_layer)
-    x = MaxPooling2D((2, 2), padding='same')(x)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D((2, 2), padding='same')(x)
-    encoded = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-    return Model(input_layer, encoded)
-
-# Decoder
-def build_decoder(encoded_shape):
-    input_layer = Input(shape=encoded_shape)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(input_layer)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(32, (3, 3), activation='relu', padding='same')(x)
-    x = UpSampling2D((2, 2))(x)
-    x = Conv2D(1, (3, 3), activation='sigmoid', padding='same')(x)
-
-    return Model(input_layer, x)
-
-def create_autoencoder(input_shape):
-    encoder = build_encoder(input_shape)
-    decoder = build_decoder(encoder.output.shape[1:])
-    input_layer = Input(shape=input_shape)
-
-    encoded = encoder(input_layer)
-    decoded = decoder(encoded)
-    cropped_decoded = Cropping2D(cropping=((0, 1), (0, 1)))(decoded)  # Crop to (63, 63, 1)
-
-    return CustomModel(input_layer, cropped_decoded, name='autoencoder')
-
+    y_pred = tf.stack([dx, dy], 1)
+    return CustomModel(inputs=input_placeholder, outputs=y_pred, name="PosRegressor")
 
 
 

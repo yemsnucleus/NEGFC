@@ -8,8 +8,8 @@ import sys
 import os
 
 from src.record import load_records
-from src.model import create_model, create_autoencoder
-from src.losses import shift_and_rmse
+from src.model import create_model
+from src.losses import coords_rmse
 
 from tensorflow.keras.optimizers import Adam
 
@@ -21,23 +21,21 @@ def run(opt):
     train_ds = load_records('{}/train.record'.format(opt.data), batch_size=opt.bs, augmentation=False)
     val_ds   = load_records('{}/val.record'.format(opt.data), batch_size=opt.bs, augmentation=False)
     
-    print(WEIGHTS_FOLDER)
-#     model = create_model(opt.ws)
-    model = create_autoencoder((63, 63, 1))
+    # print(WEIGHTS_FOLDER)
+    model = create_model(opt.ws)
+    # model = create_autoencoder((63, 63, 1))
 
 
     # for x, y in train_ds:
-
     #     y_pred = model(x)
-
-    #     print(y_pred)
-
+    #     loss = coords_rmse(y, y_pred)
+    #     print(loss)
     #     plt.imshow(y_pred[0])
     #     plt.savefig('./output/out_0.png')
     #     break
 
     optimizer = Adam(opt.lr)
-    model.compile(loss_fn=shift_and_rmse, optimizer=optimizer)
+    model.compile(loss_fn=coords_rmse, optimizer=optimizer)
 
     es = tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
@@ -61,7 +59,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--p', default='./logs/test', type=str,
                     help='Project path to save logs and weigths')
-    parser.add_argument('--data', default='./data/records/psf/fold_0', type=str,
+    parser.add_argument('--data', default='./data/records/coords/fold_0', type=str,
                     help='Datasets where .records files are located')
     parser.add_argument('--gpu', default='-1', type=str,
                         help='GPU to be used. -1 means no GPU will be used')

@@ -4,6 +4,7 @@ import pickle as pkl
 import pandas as pd
 import numpy as np
 import argparse
+import random
 import cv2
 import os
 
@@ -103,22 +104,31 @@ def create_records(opt):
 			os.makedirs(target_subset, exist_ok=True)
 			with tf.io.TFRecordWriter(os.path.join(target_subset, subset_name+'.record')) as writer:
 				for  _ in range(nsamples):
-					x_shift = np.random.uniform(-5, 5)
-					y_shift = np.random.uniform(-5, 5)
+					x_shift = random.randint(-5, 5)
+					y_shift = random.randint(-5, 5)
+
 
 					num_psfs = subset.shape[0]
 					random_index = np.random.randint(num_psfs)
 					selected = subset[random_index]
 
+					xcenter = selected.shape[0]//2
+					ycenter = selected.shape[0]//2
+
+					xcord = xcenter + x_shift
+					ycord = ycenter + y_shift
+					print(xcord, ycord)
+
 					translated = translate_image(selected, x_shift, y_shift)
 					translated = np.array(translated, dtype='float32')
 					selected = np.array(selected, dtype='float32')
 					x_bytes = translated.tobytes()
-					y_bytes = selected.tobytes()
+	
 
 					feature = {
 					'input': _bytes_feature(x_bytes),
-					'output': _bytes_feature(y_bytes),
+					'xcoor': _int64_feature(xcord),
+					'ycoor': _int64_feature(ycord),
 					'width': _int64_feature(translated.shape[-1]),
 					'height': _int64_feature(translated.shape[-2]),
 					}
@@ -130,7 +140,7 @@ def create_records(opt):
 
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--target', default='./data/records/psf_2', type=str,
+	parser.add_argument('--target', default='./data/records/coords', type=str,
 	                help='Target folder where records will be stored')
 	parser.add_argument('--source', default='./data/real', type=str,
 	                help='Source folder containing datasets with PSFs')
