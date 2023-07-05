@@ -30,6 +30,11 @@ class FluxRegressor(tf.keras.layers.Layer):
 		scaled = inputs * self.flux 
 		return scaled
 
+	def get_config(self):
+		config = super().get_config()
+		config.update({
+		"init_flux": self.init_flux})
+		return config
 
 def create_model(input_shape, init_flux=None):
 	psf = tf.keras.Input(shape=input_shape, 

@@ -7,7 +7,6 @@ from vip_hci.preproc.recentering import frame_shift, frame_center, cube_recenter
 from photutils.aperture import aperture_photometry, CircularAperture
 from vip_hci.preproc.cosmetics import cube_crop_frames
 from vip_hci.preproc.recentering import frame_center
-from vip.detection import get_intersting_coords
 from astropy.modeling import models, fitting
 from skimage.feature import peak_local_max
 from vip_hci.metrics.snr_source	import snr
