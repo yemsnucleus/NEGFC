@@ -50,7 +50,6 @@ def load_save_psfs(source, target_folder):
 		all_samples = []
 		for k, psf in enumerate(psfs):
 			for i, psf_lambda in enumerate(psf): 
-				# reshaped_psf = cv2.resize(np.transpose(psf_lambda, [1, 2, 0]), (max_size, max_size))
 				reshaped_psf = np.transpose(psf_lambda, [1, 2, 0])
 				all_pfs.append(reshaped_psf)
 				all_bands.append([i]*len(all_pfs))
@@ -84,8 +83,8 @@ def train_val_test_split(output, train_ptge, val_ptge, test_ptge):
 	np.random.shuffle(indices)
 	
 	train = output['psf'][indices[:n_train]]
-	val = output['psf'][indices[:n_val]]
-	test = output['psf'][indices[:n_test]]
+	val   = output['psf'][indices[:n_val]]
+	test  = output['psf'][indices[:n_test]]
 
 	return train, val, test
 
@@ -106,60 +105,64 @@ def create_records(opt):
 
 	output = load_save_psfs(opt.source, opt.target)
 
-	for fold in range(opt.folds):
-		train, val, test = train_val_test_split(output, opt.train, opt.val, opt.test)	
 
-		for subset_name, subset, nsamples in zip(['train', 'val', 'test'], 
-												 [train, val, test], 
-												 [opt.ntrain, opt.nval, opt.ntest]):
+	print(output)
 
-			target_subset = os.path.join(opt.target, f'fold_{fold}')
-			os.makedirs(target_subset, exist_ok=True)
-			with tf.io.TFRecordWriter(os.path.join(target_subset, subset_name+'.record')) as writer:
-				for  _ in range(nsamples):
 
-					num_psfs = subset.shape[0]
-					random_index = np.random.randint(num_psfs)
-					selected = subset[random_index]
-					original = selected.copy()
-					xcenter = selected.shape[0]//2
-					ycenter = selected.shape[0]//2
+	# for fold in range(opt.folds):
+	# 	train, val, test = train_val_test_split(output, opt.train, opt.val, opt.test)	
 
-					if np.random.random() > .5:
-						angle = random.randint(0, 360)
-						selected = transform.rotate(selected, angle)
+	# 	for subset_name, subset, nsamples in zip(['train', 'val', 'test'], 
+	# 											 [train, val, test], 
+	# 											 [opt.ntrain, opt.nval, opt.ntest]):
+
+	# 		target_subset = os.path.join(opt.target, f'fold_{fold}')
+	# 		os.makedirs(target_subset, exist_ok=True)
+	# 		with tf.io.TFRecordWriter(os.path.join(target_subset, subset_name+'.record')) as writer:
+	# 			for  _ in range(nsamples):
+
+	# 				num_psfs = subset.shape[0]
+	# 				random_index = np.random.randint(num_psfs)
+	# 				selected = subset[random_index]
+	# 				original = selected.copy()
+	# 				xcenter = selected.shape[0]//2
+	# 				ycenter = selected.shape[0]//2
+
+	# 				if np.random.random() > .5:
+	# 					angle = random.randint(0, 360)
+	# 					selected = transform.rotate(selected, angle)
 						
-					if np.random.random() > .5:
-						mask = create_circular_mask(selected.shape[0], selected.shape[0], center=(xcenter, ycenter), radius=4)
-						selected = selected*mask
+	# 				if np.random.random() > .5:
+	# 					mask = create_circular_mask(selected.shape[0], selected.shape[0], center=(xcenter, ycenter), radius=4)
+	# 					selected = selected*mask
 
-					if np.random.random() > .3:
-						x_shift = random.randint(-5, 5)
-						y_shift = random.randint(-5, 5)
+	# 				if np.random.random() > .3:
+	# 					x_shift = random.randint(-5, 5)
+	# 					y_shift = random.randint(-5, 5)
 
-						xcord = xcenter + x_shift
-						ycord = ycenter + y_shift
+	# 					xcord = xcenter + x_shift
+	# 					ycord = ycenter + y_shift
 
-						selected = translate_image(selected, x_shift, y_shift)
+	# 					selected = translate_image(selected, x_shift, y_shift)
 					
 
-					# fig, axes = plt.subplots(1, 2)
-					# axes[0].imshow(original)
-					# axes[1].imshow(selected)
-					# fig.savefig('./output/new.png')
-					selected = np.array(selected, dtype='float32')
-					x_bytes = selected.tobytes()
+	# 				# fig, axes = plt.subplots(1, 2)
+	# 				# axes[0].imshow(original)
+	# 				# axes[1].imshow(selected)
+	# 				# fig.savefig('./output/new.png')
+	# 				selected = np.array(selected, dtype='float32')
+	# 				x_bytes = selected.tobytes()
 
-					feature = {
-					'input': _bytes_feature(x_bytes),
-					'xcoor': _int64_feature(xcord),
-					'ycoor': _int64_feature(ycord),
-					'width': _int64_feature(selected.shape[-1]),
-					'height': _int64_feature(selected.shape[-2]),
-					}
+	# 				feature = {
+	# 				'input': _bytes_feature(x_bytes),
+	# 				'xcoor': _int64_feature(xcord),
+	# 				'ycoor': _int64_feature(ycord),
+	# 				'width': _int64_feature(selected.shape[-1]),
+	# 				'height': _int64_feature(selected.shape[-2]),
+	# 				}
 
-					example = tf.train.Example(features=tf.train.Features(feature=feature))
-					writer.write(example.SerializeToString())
+	# 				example = tf.train.Example(features=tf.train.Features(feature=feature))
+	# 				writer.write(example.SerializeToString())
 
 
 
