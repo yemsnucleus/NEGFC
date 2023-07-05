@@ -8,6 +8,7 @@ import random
 import cv2
 import os
 
+from skimage import transform
 from src.record import _bytes_feature, _int64_feature
 from src.preprocess import load_data
 
@@ -88,6 +89,18 @@ def train_val_test_split(output, train_ptge, val_ptge, test_ptge):
 
 	return train, val, test
 
+def create_circular_mask(h, w, center=None, radius=None):
+
+    if center is None: # use the middle of the image
+        center = (int(w/2), int(h/2))
+    if radius is None: # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w-center[0], h-center[1])
+
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0])**2 + (Y-center[1])**2)
+
+    mask = dist_from_center <= radius
+    return mask
 
 def create_records(opt):
 
@@ -108,32 +121,41 @@ def create_records(opt):
 					num_psfs = subset.shape[0]
 					random_index = np.random.randint(num_psfs)
 					selected = subset[random_index]
+					original = selected.copy()
 					xcenter = selected.shape[0]//2
 					ycenter = selected.shape[0]//2
 
-					probability = np.random.random()
-					if probability > opt.prob:
+					if np.random.random() > .5:
+						angle = random.randint(0, 360)
+						selected = transform.rotate(selected, angle)
+						
+					if np.random.random() > .5:
+						mask = create_circular_mask(selected.shape[0], selected.shape[0], center=(xcenter, ycenter), radius=4)
+						selected = selected*mask
+
+					if np.random.random() > .3:
 						x_shift = random.randint(-5, 5)
 						y_shift = random.randint(-5, 5)
 
 						xcord = xcenter + x_shift
 						ycord = ycenter + y_shift
 
-						translated = translate_image(selected, x_shift, y_shift)
-						translated = np.array(translated, dtype='float32')
-					else:
-						translated = np.array(selected, dtype='float32')
-						xcord = xcenter
-						ycord = ycenter
+						selected = translate_image(selected, x_shift, y_shift)
+					
 
-					x_bytes = translated.tobytes()
+					# fig, axes = plt.subplots(1, 2)
+					# axes[0].imshow(original)
+					# axes[1].imshow(selected)
+					# fig.savefig('./output/new.png')
+
+					x_bytes = selected.tobytes()
 
 					feature = {
 					'input': _bytes_feature(x_bytes),
 					'xcoor': _int64_feature(xcord),
 					'ycoor': _int64_feature(ycord),
-					'width': _int64_feature(translated.shape[-1]),
-					'height': _int64_feature(translated.shape[-2]),
+					'width': _int64_feature(selected.shape[-1]),
+					'height': _int64_feature(selected.shape[-2]),
 					}
 
 					example = tf.train.Example(features=tf.train.Features(feature=feature))
