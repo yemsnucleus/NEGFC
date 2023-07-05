@@ -108,15 +108,13 @@ def create_records(opt):
 					num_psfs = subset.shape[0]
 					random_index = np.random.randint(num_psfs)
 					selected = subset[random_index]
+					xcenter = selected.shape[0]//2
+					ycenter = selected.shape[0]//2
 
 					probability = np.random.random()
 					if probability > opt.prob:
 						x_shift = random.randint(-5, 5)
 						y_shift = random.randint(-5, 5)
-
-
-						xcenter = selected.shape[0]//2
-						ycenter = selected.shape[0]//2
 
 						xcord = xcenter + x_shift
 						ycord = ycenter + y_shift
@@ -125,7 +123,8 @@ def create_records(opt):
 						translated = np.array(translated, dtype='float32')
 					else:
 						translated = np.array(selected, dtype='float32')
-						
+						xcord = xcenter
+						ycord = ycenter
 
 					x_bytes = translated.tobytes()
 
