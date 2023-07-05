@@ -147,7 +147,7 @@ def create_records(opt):
 					# axes[0].imshow(original)
 					# axes[1].imshow(selected)
 					# fig.savefig('./output/new.png')
-
+					selected = np.array(selected, dtype='float32')
 					x_bytes = selected.tobytes()
 
 					feature = {
