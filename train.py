@@ -39,25 +39,25 @@ def run(opt):
     # print(WEIGHTS_FOLDER)
     model = create_model(opt.ws)
 
-    # optimizer = Adam(opt.lr)
-    # model.compile(loss_fn=coords_rmse, optimizer=optimizer)
+    optimizer = Adam(opt.lr)
+    model.compile(loss_fn=coords_rmse, optimizer=optimizer)
 
-    # es = tf.keras.callbacks.EarlyStopping(
-    #         monitor='val_loss',
-    #         min_delta=1e-3,
-    #         patience=opt.patience,
-    #         mode='min',
-    #         restore_best_weights=True,
-    #     )
-    # tb = tf.keras.callbacks.TensorBoard(
-    #     log_dir=os.path.join(WEIGHTS_FOLDER, 'logs'),
-    #     histogram_freq=1,
-    #     write_graph=True,
-    #     write_images=True,
-    #     update_freq='epoch')
+    es = tf.keras.callbacks.EarlyStopping(
+            monitor='val_loss',
+            min_delta=1e-3,
+            patience=opt.patience,
+            mode='min',
+            restore_best_weights=True,
+        )
+    tb = tf.keras.callbacks.TensorBoard(
+        log_dir=os.path.join(WEIGHTS_FOLDER, 'logs'),
+        histogram_freq=1,
+        write_graph=True,
+        write_images=True,
+        update_freq='epoch')
 
-    # hist = model.fit(train_ds, epochs=opt.epochs, validation_data=val_ds, callbacks=[es, tb])
-    # model.save_weights(os.path.join(WEIGHTS_FOLDER, 'weigths'))
+    hist = model.fit(train_ds, epochs=opt.epochs, validation_data=val_ds, callbacks=[es, tb])
+    model.save_weights(os.path.join(WEIGHTS_FOLDER, 'weigths'))
 
 
 if __name__ == '__main__':
