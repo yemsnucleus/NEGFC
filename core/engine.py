@@ -26,6 +26,7 @@ def inference_step(cube, psf, x, y, model_path, window_size):
 	model.load_weights(os.path.join(model_path, 'weights')).expect_partial()
 	y_pred = model.predict(loader)
 	fluxes = model.trainable_variables[0].numpy()
+	
 	return y_pred[0,...,0], companion, np.squeeze(fluxes)
 
 def first_guess(table, cube, psf, window_size=30, learning_rate=1e-2, epochs=1e6, n_jobs=None, target_folder='.', verbose=0):

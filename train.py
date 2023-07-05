@@ -11,7 +11,7 @@ def run(opt):
     os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu
     WEIGHTS_FOLDER = os.path.join(opt.p, names.get_first_name())
     table, cube, psf = preprocess(opt.data, lambda_ch=0)
-    table = table[table['snr']>70.0]
+    # table = table[table['snr']>10.0]
     table = first_guess(table, cube, psf, 
                         window_size=opt.ws, 
                         learning_rate=opt.lr, 

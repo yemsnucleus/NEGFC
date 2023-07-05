@@ -308,8 +308,14 @@ def get_companions(cube, x, y, window_size=30, n_jobs=None):
 
 
 def create_tf_dataset(psf, companion, batch_size=1, repeat=1):
+	npsf, _, _  = psf.shape
+	n_comp, _, _ = companion.shape
 
-	psf_ext = np.tile(psf[0][None,..., None], [companion.shape[0], 1, 1, 1])
+	times = int(np.ceil(n_comp/npsf))
+	
+	psf_ext = [np.tile(psf[i][None,..., None], [times, 1, 1, 1]) for i in range(npsf)]
+	psf_ext = np.vstack(psf_ext)[:n_comp]
+
 	inp_x = psf_ext[None,...]
 	out_x = companion[None,...,None]
 

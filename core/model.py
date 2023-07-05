@@ -20,14 +20,14 @@ class FluxRegressor(tf.keras.layers.Layer):
 						trainable=True,
 						name='flux_pred')
 
-		# b_init = tf.zeros_initializer()
-		# self.noise = tf.Variable(
-		# 				initial_value=b_init(shape=(input_shape[1], 1, 1, 1), dtype=tf.float32),
-		# 				trainable=True,
-		# 				name='noise')
+		b_init = tf.zeros_initializer()
+		self.noise = tf.Variable(
+						initial_value=b_init(shape=(input_shape[1], 1, 1, 1), dtype=tf.float32),
+						trainable=True,
+						name='noise')
 
 	def call(self, inputs):  # Defines the computation from inputs to outputs
-		scaled = inputs * self.flux 
+		scaled = inputs * self.flux + self.noise
 		return scaled
 
 	def get_config(self):
@@ -45,7 +45,8 @@ def create_model(input_shape, init_flux=None):
 
 def reduce_std(y_true, y_pred):
 	residuals = tf.pow(y_true - y_pred, 2)
-	return tf.math.reduce_std(residuals)
+	std = tf.math.reduce_std(residuals, axis=[2, 3, 4])
+	return tf.reduce_mean(std)
 
 
 class CustomModel(tf.keras.Model):
@@ -69,4 +70,6 @@ class CustomModel(tf.keras.Model):
 
 		# Return a dict mapping metric names to current value
 		pred_flux = tf.reduce_mean(trainable_vars[0])
-		return {'loss': loss, 'flux':pred_flux}
+		pred_std = tf.reduce_mean(trainable_vars[1])
+
+		return {'loss': loss, 'flux':pred_flux, 'std': pred_std}
