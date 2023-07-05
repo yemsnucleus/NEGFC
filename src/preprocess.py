@@ -131,11 +131,11 @@ def find_closest_row_index(x_value, y_value, df_true):
     closest_row_index = distances.argmin()
     return closest_row_index
 
-def preprocess_folder(root, target_folder):
+def preprocess_folder(root, target_folder, wavelength=0):
     if not os.path.isdir(target_folder):
         print('[INFO] Preprocessing data')
         cube, psf, rot_angles = load_data(root)
-        fr_pca = pca(cube, 
+        fr_pca = pca(cube[wavelength], 
                      rot_angles, 
                      ncomp=5,
                      mask_center_px=None, 
@@ -151,17 +151,19 @@ def preprocess_folder(root, target_folder):
             hdu = fits.PrimaryHDU(file)
             hdu.writeto(os.path.join(target_folder, file_name+'.fits'), overwrite=True)
             
-            
-        true_table = pd.read_csv(os.path.join(root, 'true_values.csv'))
-        closest_indices = []
-        for index, row in table.iterrows():
-            closest = find_closest_row_index(row['x'], row['y'], true_table) 
-            ctt = true_table.iloc[closest]
-            closest_indices.append(ctt)
+        try:    
+            true_table = pd.read_csv(os.path.join(root, 'true_values.csv'))
+            closest_indices = []
+            for index, row in table.iterrows():
+                closest = find_closest_row_index(row['x'], row['y'], true_table) 
+                ctt = true_table.iloc[closest]
+                closest_indices.append(ctt)
 
-        final = pd.DataFrame(closest_indices).reset_index()
-        final = pd.concat([table, final], axis=1, ignore_index=False, sort=False)
-        final.to_csv(os.path.join(target_folder, 'init_params.csv'), index=False)
+            final = pd.DataFrame(closest_indices).reset_index()
+            final = pd.concat([table, final], axis=1, ignore_index=False, sort=False)
+            final.to_csv(os.path.join(target_folder, 'init_params.csv'), index=False)
+        except:
+            table.to_csv(os.path.join(target_folder, 'init_params.csv'), index=False)
     else:
         print('[INFO] Restoring saved values')
         # Complete paths with dafault file names
@@ -177,7 +179,10 @@ def preprocess_folder(root, target_folder):
         # Open initial very initial guess
         table = pd.read_csv(os.path.join(target_folder, 'init_params.csv'))
 
-    table = table.apply(lambda x: get_radius_theta(x, cube.shape[1:]), 1)
-
+    try:
+        table = table.apply(lambda x: get_radius_theta(x, cube.shape[1:]), 1)
+    except:
+        pass
+    
     return cube, psf, rot_angles, table
 

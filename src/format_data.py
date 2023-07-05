@@ -74,7 +74,7 @@ def cut_patches(x, y, flux, fwhm, cube, psf, ids, size=15):
 	psf_new_shape = tf.map_fn(lambda x: reshape_image(x, tf.shape(windows)[-1]), psf, 
 						 fn_output_signature=DTYPE)
 
-	return x, y, flux, fwhm, cube, psf_new_shape, windows, ids
+	return windows #x, y, flux, fwhm, cube, psf_new_shape, windows, ids
 
 def select_and_flat(x,y,flux, fwhm, cube, psf, windows, ids):
 	flux = tf.tile(tf.expand_dims(flux, 0), [tf.shape(windows)[0]])
@@ -141,6 +141,7 @@ def create_dataset(cube, psf, rot_angles, table, batch_size=10, window_size=15, 
     
     dataset = tf.data.Dataset.from_tensor_slices((x_rot, y_rot, flux, fwhm, cube, psf, ids))
     dataset = dataset.map(lambda a,b,c,d,e,f,g: cut_patches(a,b,c,d,e,f,g,size=window_size))
+    return dataset
     dataset = dataset.flat_map(select_and_flat)
     dataset = dataset.repeat(repeat)
     dataset = dataset.map(lambda a,b,c,d,e,f,g: create_input_dictonary(a,b,c,d,e,f,g,q=back_q))
