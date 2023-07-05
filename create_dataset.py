@@ -104,26 +104,30 @@ def create_records(opt):
 			os.makedirs(target_subset, exist_ok=True)
 			with tf.io.TFRecordWriter(os.path.join(target_subset, subset_name+'.record')) as writer:
 				for  _ in range(nsamples):
-					x_shift = random.randint(-5, 5)
-					y_shift = random.randint(-5, 5)
-
 
 					num_psfs = subset.shape[0]
 					random_index = np.random.randint(num_psfs)
 					selected = subset[random_index]
 
-					xcenter = selected.shape[0]//2
-					ycenter = selected.shape[0]//2
+					probability = np.random.random()
+					if probability > opt.prob:
+						x_shift = random.randint(-5, 5)
+						y_shift = random.randint(-5, 5)
 
-					xcord = xcenter + x_shift
-					ycord = ycenter + y_shift
-					print(xcord, ycord)
 
-					translated = translate_image(selected, x_shift, y_shift)
-					translated = np.array(translated, dtype='float32')
-					selected = np.array(selected, dtype='float32')
+						xcenter = selected.shape[0]//2
+						ycenter = selected.shape[0]//2
+
+						xcord = xcenter + x_shift
+						ycord = ycenter + y_shift
+
+						translated = translate_image(selected, x_shift, y_shift)
+						translated = np.array(translated, dtype='float32')
+					else:
+						translated = np.array(selected, dtype='float32')
+						
+
 					x_bytes = translated.tobytes()
-	
 
 					feature = {
 					'input': _bytes_feature(x_bytes),
@@ -146,6 +150,8 @@ if __name__ == '__main__':
 	                help='Source folder containing datasets with PSFs')
 	parser.add_argument('--folds', default=1, type=int,
 	                    help='Number of folds')
+	parser.add_argument('--prob', default=0.4, type=float,
+	                    help='Probability of shifting images')
 	parser.add_argument('--train', default=.5, type=float,
 	                    help='Percentage (in decimals) of the total PSFs to be used as a part of the training set')
 	parser.add_argument('--val', default=.25, type=float,

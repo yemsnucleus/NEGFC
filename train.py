@@ -18,41 +18,46 @@ def run(opt):
     os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu
     WEIGHTS_FOLDER = os.path.join(opt.p, names.get_first_name())
 
-    train_ds = load_records('{}/train.record'.format(opt.data), batch_size=opt.bs, augmentation=False)
-    val_ds   = load_records('{}/val.record'.format(opt.data), batch_size=opt.bs, augmentation=False)
+    train_ds = load_records('{}/train.record'.format(opt.data), batch_size=opt.bs, augmentation=True)
+    val_ds   = load_records('{}/val.record'.format(opt.data), batch_size=opt.bs, augmentation=True)
     
+    fig, axes = plt.subplots(3, 3)
+    axes = axes.flatten()
+
+    maxi = 0
+    for index, (x, y) in enumerate(train_ds.take(9)):
+        axes[index].set_title(str(y[index].numpy()))
+        im = axes[index].imshow(x[index], vmin=0, vmax=0.1)
+        axes[index].set_xticks([])
+        axes[index].set_yticks([])
+
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    fig.colorbar(im, cax=cbar_ax)
+    fig.savefig('./output/inputs.png', format='png')
+
     # print(WEIGHTS_FOLDER)
     model = create_model(opt.ws)
-    # model = create_autoencoder((63, 63, 1))
 
+    # optimizer = Adam(opt.lr)
+    # model.compile(loss_fn=coords_rmse, optimizer=optimizer)
 
-    # for x, y in train_ds:
-    #     y_pred = model(x)
-    #     loss = coords_rmse(y, y_pred)
-    #     print(loss)
-    #     plt.imshow(y_pred[0])
-    #     plt.savefig('./output/out_0.png')
-    #     break
+    # es = tf.keras.callbacks.EarlyStopping(
+    #         monitor='val_loss',
+    #         min_delta=1e-3,
+    #         patience=opt.patience,
+    #         mode='min',
+    #         restore_best_weights=True,
+    #     )
+    # tb = tf.keras.callbacks.TensorBoard(
+    #     log_dir=os.path.join(WEIGHTS_FOLDER, 'logs'),
+    #     histogram_freq=1,
+    #     write_graph=True,
+    #     write_images=True,
+    #     update_freq='epoch')
 
-    optimizer = Adam(opt.lr)
-    model.compile(loss_fn=coords_rmse, optimizer=optimizer)
-
-    es = tf.keras.callbacks.EarlyStopping(
-            monitor='val_loss',
-            min_delta=1e-3,
-            patience=opt.patience,
-            mode='min',
-            restore_best_weights=True,
-        )
-    tb = tf.keras.callbacks.TensorBoard(
-        log_dir=os.path.join(WEIGHTS_FOLDER, 'logs'),
-        histogram_freq=1,
-        write_graph=True,
-        write_images=True,
-        update_freq='epoch')
-
-    hist = model.fit(train_ds, epochs=opt.epochs, validation_data=val_ds, callbacks=[es, tb])
-    model.save_weights(os.path.join(WEIGHTS_FOLDER, 'weigths'))
+    # hist = model.fit(train_ds, epochs=opt.epochs, validation_data=val_ds, callbacks=[es, tb])
+    # model.save_weights(os.path.join(WEIGHTS_FOLDER, 'weigths'))
 
 
 if __name__ == '__main__':
