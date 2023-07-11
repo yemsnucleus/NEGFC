@@ -3,10 +3,11 @@ import pandas as pd
 import numpy as np
 import os
 
-from .model import create_model
+from .model import create_model, create_pos_model, create_flux_model, reduce_std
+
 from core.data import preprocess_and_save, get_companions, create_tf_dataset
 from vip_hci.preproc.derotation import cube_derotate
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam, SGD
 from multiprocessing import cpu_count
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.core.util import event_pb2
@@ -15,7 +16,6 @@ def preprocess(path, lambda_ch=0):
 	cube, psf, rot_angles, table = preprocess_and_save(path, lambda_ch=0)
 	cube = cube_derotate(cube, rot_angles, nproc=4, imlib='opencv', interpolation='nearneig')
 	return table, cube, psf
-
 
 def inference_step(cube, psf, x, y, model_path, window_size):
 	companion = get_companions(cube, x=x, y=y, window_size=window_size)
@@ -27,7 +27,7 @@ def inference_step(cube, psf, x, y, model_path, window_size):
 	y_pred = model.predict(loader)
 	fluxes = model.trainable_variables[0].numpy()
 	
-	return y_pred[0,...,0], companion, np.squeeze(fluxes)
+	return y_pred[...,0], companion, np.squeeze(fluxes), model
 
 def first_guess(table, cube, psf, window_size=30, learning_rate=1e-2, epochs=1e6, n_jobs=None, target_folder='.', verbose=0):
 	if n_jobs is None:
@@ -47,10 +47,9 @@ def first_guess(table, cube, psf, window_size=30, learning_rate=1e-2, epochs=1e6
 
 		model.compile(optimizer=Adam(learning_rate))
 
-		es  = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=20, restore_best_weights=True)
-		tb  = tf.keras.callbacks.TensorBoard(log_dir=os.path.join(target_folder, f'model_{index}', 'logs'))
+		ckbs = get_callbacks(os.path.join(target_folder, f'model_{index}', 'logs'))
 
-		hist = model.fit(loader, epochs=int(epochs), callbacks=[es, tb], workers=n_jobs, 
+		hist = model.fit(loader, epochs=int(epochs), callbacks=ckbs, workers=n_jobs, 
 						 use_multiprocessing=True, verbose=verbose)
 
 		model.save_weights(os.path.join(target_folder, f'model_{index}', 'weights'))
@@ -62,6 +61,13 @@ def first_guess(table, cube, psf, window_size=30, learning_rate=1e-2, epochs=1e6
 	table['optimal_flux'] = optimal_fluxes
 	table.to_csv(os.path.join(target_folder, 'prediction.csv'), index=False)
 	return table
+
+def get_callbacks(log_dir):
+	es  = tf.keras.callbacks.EarlyStopping(monitor='loss', 
+									   patience=20, 
+									   restore_best_weights=True)
+	tb  = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
+	return [es, tb]
 
 def get_metrics(path_logs, metric_name='epoch_loss', full_logs=True, show_keys=False):
     train_logs = [x for x in os.listdir(path_logs) if x.endswith('.v2')][-1]

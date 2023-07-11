@@ -41,13 +41,3 @@ if __name__ == '__main__':
 
     opt = parser.parse_args()
     run(opt)
-
-
-# N = 5
-# fig, axes = plt.subplots(N, 2, sharex=True, sharey=True, dpi=300, 
-#                         gridspec_kw={'hspace': 0.1, 'wspace': -0.8})
-# for i, x in enumerate(dataset.take(N)):
-#     axes[i][0].imshow(x['input'])
-#     axes[i][1].imshow(x['output'])
-
-# fig.savefig('./output/translated.png', bbox_inches='tight')

@@ -1,56 +1,65 @@
 import tensorflow as tf
+from .layers import FluxPosRegressor, PosRegressor,FluxRegressor
 
-
-class FluxRegressor(tf.keras.layers.Layer):
-
-	def __init__(self, init_flux=None):
-		super(FluxRegressor, self).__init__()
-		self.init_flux = init_flux
-
-	def build(self, input_shape):  # Create the state of the layer (weights)
-		print('input shape: ', input_shape)
-		if self.init_flux is None:
-			w_init = tf.random_normal_initializer()
-			initial_value = w_init(shape=(input_shape[1], 1, 1, 1), dtype=tf.float32)
-		else:
-			initial_value= tf.ones([input_shape[1], 1, 1, 1], dtype=tf.float32) * self.init_flux
-
-		self.flux = tf.Variable(
-						initial_value=initial_value,
-						trainable=True,
-						name='flux_pred')
-
-		b_init = tf.zeros_initializer()
-		self.noise = tf.Variable(
-						initial_value=b_init(shape=(input_shape[1], 1, 1, 1), dtype=tf.float32),
-						trainable=True,
-						name='noise')
-
-	def call(self, inputs):  # Defines the computation from inputs to outputs
-		scaled = inputs * self.flux + self.noise
-		return scaled
-
-	def get_config(self):
-		config = super().get_config()
-		config.update({
-		"init_flux": self.init_flux})
-		return config
-
+# ====== MODELS ======
 def create_model(input_shape, init_flux=None):
 	psf = tf.keras.Input(shape=input_shape, 
 						 dtype=tf.float32)
-	flux_regressor = FluxRegressor(init_flux=init_flux)
+	flux_regressor = FluxPosRegressor(init_flux=init_flux)
+
 	fake_comp = flux_regressor(psf)
-	return CustomModel(inputs=psf, outputs=fake_comp, name='Regressor')
+	return CustomModel(model_type='flux_pos', inputs=psf, outputs=fake_comp, name='Regressor')
+
+def create_pos_model(input_shape):
+	psf = tf.keras.Input(shape=input_shape, 
+						 dtype=tf.float32)
+	
+	pos_regressor = PosRegressor(name='pos_reg')
+
+	fake_comp = pos_regressor(psf)
+	return CustomModel(model_type='pos', inputs=psf, outputs=fake_comp, name='PosRegressor')
+
+def create_flux_model(input_shape, init_flux=None, pos_model=None):
+	psf_plhd = tf.keras.Input(shape=input_shape, 
+						 dtype=tf.float32)
+	
+	flux_regressor = FluxRegressor(init_flux=init_flux, inp_shape=input_shape)
+
+	if pos_model is not None:
+		pos_regressor = pos_model.get_layer('pos_reg')
+		pos_regressor.trainable = False
+		x = pos_regressor(psf_plhd, training=False)
+	else:
+		x = psf_plhd
+
+	fake_comp = flux_regressor(x)
+
+	return CustomModel(model_type='flux', inputs=psf_plhd, outputs=fake_comp, name='FluxRegressor')
+
+
+# ====== TRAINING FUNCTIONS ======
+def format_flux_pos_model_output(loss, trainable_vars):
+	# Return a dict mapping metric names to current value
+	pred_flux = tf.reduce_mean(trainable_vars[0])
+	pred_std = tf.reduce_mean(trainable_vars[1])
+	return {'loss': loss, 'flux':pred_flux, 'std': pred_std}
+
+def format_pos_model_output(loss, trainable_vars):
+	# Return a dict mapping metric names to current value
+	pred = tf.reduce_mean(trainable_vars, axis=[0, 1])
+	return {'loss': loss, 'dx': pred[0], 'dy':pred[1]}
 
 def reduce_std(y_true, y_pred):
 	residuals = tf.pow(y_true - y_pred, 2)
 	std = tf.math.reduce_std(residuals, axis=[2, 3, 4])
 	return tf.reduce_mean(std)
 
-
 class CustomModel(tf.keras.Model):
-	def compile(self, **kwargs):
+	def __init__(self, model_type='flux_pos', **kwargs):
+		super(CustomModel, self).__init__(**kwargs)
+		self.model_type = model_type
+
+	def compile(self,**kwargs):
 		super(CustomModel, self).compile(**kwargs)
 
 	def train_step(self, data):
@@ -68,8 +77,7 @@ class CustomModel(tf.keras.Model):
 		gradients = tape.gradient(loss, trainable_vars)
 		self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-		# Return a dict mapping metric names to current value
-		pred_flux = tf.reduce_mean(trainable_vars[0])
-		pred_std = tf.reduce_mean(trainable_vars[1])
-
-		return {'loss': loss, 'flux':pred_flux, 'std': pred_std}
+		if self.model_type == 'flux_pos' or self.model_type == 'flux':
+			return format_flux_pos_model_output(loss, trainable_vars)	
+		if self.model_type == 'pos':
+			return format_pos_model_output(loss, trainable_vars)
