@@ -10,15 +10,6 @@ def create_model(input_shape, init_flux=None):
 	fake_comp = flux_regressor(psf)
 	return CustomModel(model_type='flux_pos', inputs=psf, outputs=fake_comp, name='Regressor')
 
-def create_pos_model(input_shape):
-	psf = tf.keras.Input(shape=input_shape, 
-						 dtype=tf.float32)
-	
-	pos_regressor = PosRegressor(name='pos_reg')
-
-	fake_comp = pos_regressor(psf)
-	return CustomModel(model_type='pos', inputs=psf, outputs=fake_comp, name='PosRegressor')
-
 def create_flux_model(input_shape, init_flux=None, pos_model=None):
 	psf_plhd = tf.keras.Input(shape=input_shape, 
 						 dtype=tf.float32)
