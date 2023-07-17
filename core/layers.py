@@ -1,23 +1,10 @@
 import tensorflow as tf
-from scipy.ndimage import map_coordinates
+from scipy.ndimage import map_coordinates, shift
 
-def shift_image(image, shift):
-	# Determine the dimensions of the image
-	num_dims = tf.rank(image)
-	shift = tf.reverse(shift, axis=[0])
-	# Generate coordinate arrays for each dimension
-	coords = tf.meshgrid(*[tf.range(size) for size in image.shape], indexing='ij')
-
-	# # Calculate the shifted coordinates using the shift values
-	# shifted_coords = []
-	# for axis, coord in enumerate(coords):
-	# 	coord + shift[axis]
-	shifted_coords = coords + shift
-	# Perform interpolation using map_coordinates
-	shifted_image = map_coordinates(image, shifted_coords, 
-		order=1, mode='mirror', cval=0.0)
-
-	return shifted_image
+def shift_image(image, dydx_shift):
+	image = tf.squeeze(image, -1)
+	shifted = shift(image, shift=dydx_shift, order=1, mode='mirror')
+	return shifted
 
 class FluxPosRegressor(tf.keras.layers.Layer):
 
@@ -26,7 +13,6 @@ class FluxPosRegressor(tf.keras.layers.Layer):
 		self.init_flux = init_flux
 
 	def build(self, input_shape):  # Create the state of the layer (weights)
-		print('input shape: ', input_shape)
 		if self.init_flux is None:
 			w_init = tf.random_normal_initializer()
 			initial_value = w_init(shape=(input_shape[1], 1, 1, 1), dtype=tf.float32)
@@ -40,22 +26,23 @@ class FluxPosRegressor(tf.keras.layers.Layer):
 
 		noise_init = tf.zeros_initializer()
 		self.noise = tf.Variable(
-						initial_value=noise_init(shape=(input_shape[1], 1, 1, 1), dtype=tf.float32),
+						initial_value=noise_init(shape=[input_shape[1], 1, 1, 1], dtype=tf.float32),
 						trainable=True,
 						name='noise')
 
-		dxdy_init = tf.random_normal_initializer()
-		self.dxdy = tf.Variable(
-						initial_value=dxdy_init([input_shape[1], 2], dtype=tf.float32),
+		dydx_init = tf.random_normal_initializer()
+		self.dydx = tf.Variable(
+						initial_value=dydx_init([input_shape[1], 2], dtype=tf.float32),
 						trainable=True,
-						name='theta')
+						name='dydx')
 
 	def call(self, inputs):  # Defines the computation from inputs to outputs
-		inputs = tf.map_fn(lambda x: tf.numpy_function(shift_image, (x[0], x[1]), tf.float32), 
-						   (inputs[0], self.dxdy), 
+		inputs_shifted = tf.map_fn(lambda x: tf.numpy_function(shift_image, (x[0], x[1]), 
+													   tf.float32), 
+						   (inputs[0], self.dydx), 
 						   fn_output_signature=tf.float32)		
-		inputs = tf.reshape(inputs, tf.shape(inputs))
-		scaled = inputs * self.flux + self.noise
+		inputs_shifted = tf.reshape(inputs_shifted, tf.shape(inputs))
+		scaled = inputs_shifted * self.flux + self.noise
 		return scaled
 
 	def get_config(self):

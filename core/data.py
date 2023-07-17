@@ -244,22 +244,32 @@ def load_data(root):
 
 	return new_cube, new_psfs, rot_angles
 
-def preprocess_and_save(folder, lambda_ch=0):
+
+def preprocess_fn(folder, root):
+	'''Preprocess function'''
+	cubes, psfs, rot_angles = load_data(folder)
+	for k, (cube, psf) in enumerate(zip(cubes, psfs)):
+		table , fr_pca = get_intersting_coords(cube, psf, rot_angles) 
+		
+		target = os.path.join(root, f'lambda_{k}')
+		os.makedirs(target, exist_ok=True)
+		table.to_csv(os.path.join(target, 'coords.csv'), index=False)
+		for file, file_name in zip([cube, psf, rot_angles, fr_pca], \
+		                       ['center_im', 'median_unsat', 'rotnth', 'collapsed_pca']):
+			hdu = fits.PrimaryHDU(file)
+			hdu.writeto(os.path.join(target, file_name+'.fits'), overwrite=True)
+
+def preprocess_and_save(folder, lambda_ch=0, load_preprocessed=True):
 
 	root = os.path.join(folder, 'processed')
 	if not os.path.exists(os.path.join(root, f'lambda_{lambda_ch}')):
-		cubes, psfs, rot_angles = load_data(folder)
-		for k, (cube, psf) in enumerate(zip(cubes, psfs)):
-		    table , fr_pca = get_intersting_coords(cube, psf, rot_angles) 
-		    target = os.path.join(root, f'lambda_{k}')
-		    os.makedirs(target, exist_ok=True)
-		    table.to_csv(os.path.join(target, 'coords.csv'), index=False)
-		    for file, file_name in zip([cube, psf, rot_angles, fr_pca], \
-		                               ['center_im', 'median_unsat', 'rotnth', 'collapsed_pca']):
-		        hdu = fits.PrimaryHDU(file)
-		        hdu.writeto(os.path.join(target, file_name+'.fits'), overwrite=True)
+		preprocess_fn(folder, root)
 
-	# -================
+	if not load_preprocessed:
+		print('[INFO] Preprocessing data...')
+		preprocess_fn(folder, root)
+
+	# =================
 	cube_route = os.path.join(root, f'lambda_{lambda_ch}', 'center_im.fits')
 	psf_route  = os.path.join(root, f'lambda_{lambda_ch}', 'median_unsat.fits')
 	rot_route  = os.path.join(root, f'lambda_{lambda_ch}', 'rotnth.fits')

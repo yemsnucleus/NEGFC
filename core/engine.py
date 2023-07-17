@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import os
 
-from .model import create_model, create_flux_model, reduce_std
+from .model import create_model
 
 from core.data import preprocess_and_save, get_companions, create_tf_dataset
 from vip_hci.preproc.derotation import cube_derotate
@@ -68,7 +68,6 @@ def pca_tf(cube, out_size, rot_ang, ncomp=1, derotate='tf'):
 	return median
 
 def get_angle_radius(x, y, width, height):
-
 	x = x - height//2
 	y = y - width //2
 	radius = np.sqrt(x**2+y**2) # radius
@@ -79,10 +78,20 @@ def get_angle_radius(x, y, width, height):
 	theta0 = np.mod(angle, 360) 
 	return radius, theta0
 
-def preprocess(path, lambda_ch=0):
-	cube, psf, rot_angles, table = preprocess_and_save(path, lambda_ch=0)
+def preprocess(path, lambda_ch=0, p=25, load_preprocessed=True):
+	cube, psf, rot_angles, table = preprocess_and_save(path, 
+		lambda_ch=0, load_preprocessed=load_preprocessed)
 	cube = cube_derotate(cube, rot_angles, nproc=4, imlib='opencv', interpolation='nearneig')
-	return table, cube, psf, rot_angles
+	
+	# ---- estimating noise ----
+	max_val = np.percentile(cube, p)
+	mask_in = np.array(cube<max_val, dtype='float')
+	cube_filtered = cube * mask_in
+	
+	mean_per_frame = np.mean(cube_filtered, axis=(1,2))
+	std_per_frame  = np.std(cube_filtered, axis=(1,2))
+	moments = np.vstack([mean_per_frame, std_per_frame]).T
+	return table, cube, psf, rot_angles, moments
 
 def inference_step(cube, psf, x, y, model_path, window_size):
 	companion = get_companions(cube, x=x, y=y, window_size=window_size)
@@ -94,23 +103,26 @@ def inference_step(cube, psf, x, y, model_path, window_size):
 	y_pred = model.predict(loader)
 	fluxes = model.trainable_variables[0].numpy()
 	
-	return y_pred[...,0], companion, np.squeeze(fluxes), model
+	return y_pred[0, ...,0], companion, np.squeeze(fluxes), model
 
-def get_callbacks(log_dir):
+def get_callbacks(log_dir, loss_precision):
 	es  = tf.keras.callbacks.EarlyStopping(monitor='loss', 
-										   patience=20, 
-										   min_delta=1e-2,
+										   patience=10, 
+										   min_delta=loss_precision,
 										   restore_best_weights=True)
 	tb  = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
 	return [es, tb]
 
-def first_guess(table, cube, psf, window_size=30, learning_rate=1e-2, epochs=1e6, n_jobs=None, target_folder='.', verbose=0):
+def first_guess(table, cube, psf, backmoments, window_size=30, learning_rate=1e-2, 
+				epochs=1e6, n_jobs=None, 
+				target_folder='.', verbose=0, 
+				loss_precision=0.):
 	if n_jobs is None:
 		n_jobs = int(cpu_count()//2)
 
 	os.makedirs(target_folder, exist_ok=True)
 
-	optimal_fluxes = []
+	optimal_fluxes, optimal_xs, optimal_ys = [], [], []
 	for index, row in table.iterrows():
 		print('[INFO] Training (x, y) = ({:.2f} {:.2f})'.format(row['x'], row['y']))
 		companion = get_companions(cube, x=row['x'], y=row['y'], window_size=window_size)
@@ -120,21 +132,38 @@ def first_guess(table, cube, psf, window_size=30, learning_rate=1e-2, epochs=1e6
 
 		model = create_model(input_shape=input_shape, init_flux=row['flux'])
 
-		model.compile(optimizer=Adam(learning_rate))
+		model.compile(backmoments=backmoments, optimizer=Adam(learning_rate))
 
-		ckbs = get_callbacks(os.path.join(target_folder, f'model_{index}', 'logs'))
+		ckbs = get_callbacks(os.path.join(target_folder, f'model_{index}', 'logs'),
+							 loss_precision=loss_precision)
 
-		hist = model.fit(loader, epochs=int(epochs), callbacks=ckbs, workers=n_jobs, 
-						 use_multiprocessing=True, verbose=verbose)
+		hist = model.fit(loader, epochs=int(epochs), 
+						 callbacks=ckbs, 
+						 workers=n_jobs, 
+						 use_multiprocessing=True, 
+						 verbose=verbose)
 
 		model.save_weights(os.path.join(target_folder, f'model_{index}', 'weights'))
 
 		best_epoch = np.argmin(hist.history['loss'])
 		best_flux = hist.history['flux'][best_epoch]
+		
+		dydx = model.trainable_variables[-1]
+		dydx = tf.reduce_mean(dydx, 0)
+		
+		opt_x = row['x'] + dydx[1]
+		opt_y = row['y'] + dydx[0]
+		optimal_xs.append(opt_x.numpy()) 
+		optimal_ys.append(opt_y.numpy())
 		optimal_fluxes.append(best_flux)
 
 	table['optimal_flux'] = optimal_fluxes
+	table['optimal_x'] = optimal_xs
+	table['optimal_y'] = optimal_ys
+	table = table.reset_index()
+	table['index'] = table['index'].astype(int)
 	table.to_csv(os.path.join(target_folder, 'prediction.csv'), index=False)
+	
 	return table
 
 
