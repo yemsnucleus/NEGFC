@@ -20,7 +20,7 @@ def likelihood_fn(flux, cube, psf, rot_ang, back_med, back_std):
 	# residuals_med = tfp.stats.percentile(residuals, q=50)
 
 	# loss_std = tf.abs(back_std - residuals_std)
-	return residuals_std 
+	return residuals 
 
 def joint_log_prob_fn(flux, cube, psf, rot_angle, back_med, back_std):
 	return log_prob_fn(flux) + likelihood_fn(flux, cube, psf, rot_angle, back_med, back_std)
