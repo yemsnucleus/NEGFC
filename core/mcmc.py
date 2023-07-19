@@ -17,11 +17,11 @@ def likelihood_fn(flux, cube, psf, rot_ang, back_med, back_std):
 	residuals = tf.expand_dims(cube, -1) - scaled_psf
 
 	residuals_std = tf.math.reduce_std(residuals)
-	# residuals_med = tfp.stats.percentile(residuals, q=50)
+	residuals_med = tfp.stats.percentile(residuals, q=50)
 
-	# loss_std = tf.pow(back_std - residuals_std, 2)
+	loss_std = tf.pow(back_std - residuals_std, 2)
 	# loss_med = tf.pow(back_med - residuals_med, 2)
-	return residuals_std
+	return loss_std
 
 def joint_log_prob_fn(flux, cube, psf, rot_angle, back_med, back_std):
 	return log_prob_fn(flux) + likelihood_fn(flux, cube, psf, rot_angle, back_med, back_std)
