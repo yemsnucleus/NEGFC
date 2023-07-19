@@ -7,7 +7,7 @@ import os
 def log_prob_fn(flux):        
 	# rv_x = tfp.distributions.Normal(loc=x, scale=.1)
 	# rv_y = tfp.distributions.Normal(loc=y, scale=.1)
-	rv_flux = tfp.distributions.Normal(loc=flux, scale=2)
+	rv_flux = tfp.distributions.Normal(loc=flux, scale=1)
 	# return (rv_x.log_prob(x) + rv_y.log_prob(y) + rv_flux.log_prob(flux))
 	return rv_flux.log_prob(flux)
 
@@ -16,12 +16,11 @@ def likelihood_fn(flux, cube, psf, rot_ang, back_med, back_std):
 	
 	residuals = tf.expand_dims(cube, -1) - scaled_psf
 
-	residuals_std = tf.math.reduce_std(residuals)
-	residuals_med = tfp.stats.percentile(residuals, q=50)
+	# residuals_std = tf.math.reduce_std(residuals)
+	# residuals_med = tfp.stats.percentile(residuals, q=50)
 
-	loss_std = tf.abs(back_std - residuals_std)
-	# loss_med = tf.pow(back_med - residuals_med, 2)
-	return loss_std
+	# loss_std = tf.abs(back_std - residuals_std)
+	return residuals_std 
 
 def joint_log_prob_fn(flux, cube, psf, rot_angle, back_med, back_std):
 	return log_prob_fn(flux) + likelihood_fn(flux, cube, psf, rot_angle, back_med, back_std)
