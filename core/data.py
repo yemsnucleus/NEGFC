@@ -299,11 +299,17 @@ def center_frame(frame, x, y, left, bottom, window_size):
 def get_companions(cube, x, y, window_size=30, n_jobs=None):
 	if n_jobs is None:
 		n_jobs = cpu_count()//2
-		
-	left   = int(x - window_size//2)
-	right  = int(x + window_size//2)
-	top    = int(y + window_size//2)
-	bottom = int(y - window_size//2)
+	
+	if window_size % 2 == 0:
+		left   = int(x - window_size//2)
+		right  = int(x + window_size//2)
+		top    = int(y + window_size//2)
+		bottom = int(y - window_size//2)
+	else:
+		left   = int(x - window_size//2)
+		right  = int(x + window_size//2+1)
+		top    = int(y + window_size//2+1)
+		bottom = int(y - window_size//2)
 
 	companion = cube[:, bottom:top, left:right]
 
@@ -316,6 +322,13 @@ def get_companions(cube, x, y, window_size=30, n_jobs=None):
 	return np.array(centered, dtype='float32')
 
 
+def extend_psf(psf, cube):
+	npsf, _, _  = psf.shape
+	n_comp, _, _ = cube.shape
+	times = int(np.ceil(n_comp/npsf))
+	psf_ext = [np.tile(psf[i][None,..., None], [times, 1, 1, 1]) for i in range(npsf)]
+	psf_ext = np.vstack(psf_ext)
+	return psf_ext
 
 def create_tf_dataset(psf, companion, batch_size=1, repeat=1):
 	npsf, _, _  = psf.shape
