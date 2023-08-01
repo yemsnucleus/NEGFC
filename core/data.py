@@ -6,7 +6,6 @@ from astropy.stats import sigma_clipped_stats, gaussian_fwhm_to_sigma, gaussian_
 from vip_hci.preproc.recentering import frame_shift, frame_center, cube_recenter_2dfit
 from photutils.aperture import aperture_photometry, CircularAperture
 from vip_hci.preproc.cosmetics import cube_crop_frames
-from vip_hci.preproc.recentering import frame_center
 from astropy.modeling import models, fitting
 from skimage.feature import peak_local_max
 from vip_hci.metrics.snr_source	import snr
