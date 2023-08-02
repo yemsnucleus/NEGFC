@@ -88,14 +88,15 @@ def center_normalize_psf(psf, cropsize=30):
 	return psf_norm, fwhm_flux, fwhm
 
 
-def get_clean_cube(data_folder, params_table, pixel=0.01225):
-
+def load_folder(data_folder):
 	cube   = fits.getdata(os.path.join(data_folder, 'center_im.fits'), ext=0)
 	psfs   = fits.getdata(os.path.join(data_folder, 'median_unsat.fits'), ext=0)
 	angles = fits.getdata(os.path.join(data_folder, 'rotnth.fits'), ext=0)
 	angles = -angles
+	return cube, psfs, angles
 
-	psf_norm, ap_flux, fwhm = center_normalize_psf(psfs[0], cropsize=30)
+def get_clean_cube(cube, psfs, angles, params_table, pixel=0.01225):
+	psf_norm, ap_flux, fwhm = center_normalize_psf(psfs, cropsize=30)
 
 	comp_params = []
 	crop_psfs = []
@@ -132,7 +133,7 @@ def get_xy_from_angle(angle, radius):
 	if 180<angle<=270:
 		x=-radius/np.sqrt(1+(np.tan(angle*np.pi/180.))**2)
 		y=-radius*np.tan(angle*np.pi/180.)/np.sqrt(1+(np.tan(angle*np.pi/180.))**2)
-	if 279<angle<=360:
+	if 270<angle<=360:
 		x=radius/np.sqrt(1+(np.tan(angle*np.pi/180.))**2)
 		y=radius*np.tan(angle*np.pi/180.)/np.sqrt(1+(np.tan(angle*np.pi/180.))**2)
 	return x, y
@@ -141,6 +142,7 @@ def get_fakecomp_to_inject(residuals_frame, params_table, offset=9):
 	x_fake_positions    = []
 	y_fake_positions    = []
 	flux_fake_positions = []
+	frame_squares = []
 	for index, row in params_table.iterrows():
 		# why offset*2+1 ?
 		frame_sq = get_square(residuals_frame, offset*2+1, row['optimal_y'], row['optimal_x'])
@@ -166,76 +168,91 @@ def get_fakecomp_to_inject(residuals_frame, params_table, offset=9):
 			for angle in range(0, 360, step):
 				x, y = get_xy_from_angle(angle, r)
 				flux=sq_noises[i]*10.
-
 				x_fake_comp.append(x)
 				y_fake_comp.append(y)
 				flux_fake_comp.append(flux)
 
+		frame_squares.append(frame_sq)
 		x_fake_positions.append(np.asarray(x_fake_comp))
 		y_fake_positions.append(np.asarray(y_fake_comp))
 		flux_fake_positions.append(np.asarray(flux_fake_comp))
 
-	return x_fake_positions, y_fake_positions, flux_fake_positions
+	return x_fake_positions, y_fake_positions, flux_fake_positions, frame_squares
 
 
 
+def get_throughput(xs_fake, ys_fake, fluxes_fake, psf, cube, rot_angles, params_table, pixel=0.01225):
+	params_table = params_table.reset_index(drop=True)
+	posx, posy = [],[]
+	for index, row in params_table.iterrows():
+		throughput=[]
+		cube_crop2     = np.zeros_like(cube)
+		cube_crop3     = np.ones_like(cube)*1e-6
+		cube_planet_fc = np.zeros_like(cube)
+		cube_emp_pl    = np.zeros_like(cube)
 
-# # ==========
-# throughput=[]
-# cube_crop2     = np.zeros_like(cube)
-# cube_crop3     = np.ones_like(cube)*1e-6
-# cube_planet_fc = np.zeros_like(cube)
-# cube_emp_pl    = np.zeros_like(cube)
-# xp, yp = row['optimal_x'], row['optimal_y']
-# cube_width = cube.shape[-1]/2
-# source_xy = [(xp, yp)] 
-# flx_min = row['optimal_flux'] - 5
-# flx_max = row['optimal_flux'] + 5
-# for k in range(len(xfc)):
-# 	cube_crop2=cube
-# 	rfc=np.sqrt((xfc[k]+xp-cube_width)**2+(yfc[k]+yp-cube_width)**2)
-# 	if (xfc[k]+xp)>=cube_width and (yfc[k]+yp)>=cube_width:
-# 		thetafc=np.arctan((yfc[k]+yp-cube_width)/(xfc[k]+xp-cube_width))*180/np.pi
-# 	elif ((xfc[k]+xp)<cube_width and (yfc[k]+yp)>cube_width) or ((xfc[k]+xp)<cube_width and (yfc[k]+yp)<cube_width):
-# 		thetafc=np.arctan((yfc[k]+yp-cube_width)/(xfc[k]+xp-cube_width))*180/np.pi+180
-# 	else:
-# 		thetafc=np.arctan((yfc[k]+yp-cube_width)/(xfc[k]+xp-cube_width))*180/np.pi+360
+		xp, yp = row['optimal_x'], row['optimal_y']
+		cube_half_width = cube.shape[-1]/2
+		source_xy = [(xp, yp)] 
+		flx_min = row['optimal_flux'] - 5
+		flx_max = row['optimal_flux'] + 5
 
-# 	cube_planet_fc=cube_inject_companions(cube_crop2, psf_norm_crop, rot_angles, ffc[k], pixel, rfc, theta=thetafc)
+		# for k in range(len(xfc)):
+		for xpos, ypos, flux in zip(xs_fake[index], ys_fake[index], fluxes_fake[index]): 
+			cube_crop2=cube
+			x_abs = xp + xpos
+			y_abs = yp + ypos
+			rfc=np.sqrt((xpos+xp-cube_half_width)**2+(ypos+yp-cube_half_width)**2)
 
-# 	r_0, theta_0, f_0 = firstguess(cube_planet_fc, rot_angles, psf_norm, annulus_width=1, aperture_radius=1,
-# 									ncomp=1,
-# 									plsc=pixel, 
-# 									fmerit='stddev',
-# 									planets_xy_coord=source_xy, 
-# 									simplex=False,
-# 									fwhm=row['fwhm_mean'],
-# 									imlib='opencv', 
-# 									interpolation='nearneig',
-# 									f_range=np.linspace(flx_min,flx_max,10))
-# 	plpar = [(r_0[0], theta_0[0], f_0[0])]
-# 	cube_emp_pl=cube_planet_free(plpar, cube_planet_fc, rot_angles, psf_norm, pixel, imlib='opencv',interpolation='lanczos4')
+			if x_abs>=cube_half_width and y_abs>=cube_half_width:
+				thetafc = np.arctan((y_abs-cube_half_width)/(x_abs-cube_half_width))*180/np.pi
 
-# 	fr_adi_fc = median_sub(cube_emp_pl, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
+			elif (x_abs<cube_half_width and y_abs>cube_half_width) or (x_abs<cube_half_width and y_abs<cube_half_width):
+				thetafc = np.arctan((y_abs-cube_half_width)/(x_abs-cube_half_width))*180/np.pi+180
+			
+			else:
+				thetafc = np.arctan((y_abs-cube_half_width)/(x_abs-cube_half_width))*180/np.pi+360
 
-# 	cube_planet_fc_map=cube_inject_companions(cube_crop3,
-# 											  psf_norm_crop,
-# 											  rot_angles,ffc[k],
-# 											  pixel,
-# 											  rfc,
-# 											  theta=thetafc)
+			# cube_planet_fc = cube_inject_companions(cube, psf, rot_angles, flux, pixel, rfc, theta=thetafc)
+			posx.append(x_abs)
+			posy.append(y_abs)
+		break
+	return cube, posx, posy, rfc
+		# 	r_0, theta_0, f_0 = firstguess(cube_planet_fc, rot_angles, psf_norm, annulus_width=1, aperture_radius=1,
+		# 									ncomp=1,
+		# 									plsc=pixel, 
+		# 									fmerit='stddev',
+		# 									planets_xy_coord=source_xy, 
+		# 									simplex=False,
+		# 									fwhm=row['fwhm_mean'],
+		# 									imlib='opencv', 
+		# 									interpolation='nearneig',
+		# 									f_range=np.linspace(flx_min,flx_max,10))
+		# 	plpar = [(r_0[0], theta_0[0], f_0[0])]
+		# 	cube_emp_pl=cube_planet_free(plpar, cube_planet_fc, rot_angles, psf_norm, pixel, imlib='opencv',interpolation='lanczos4')
 
-# 	fr_adi_map = median_sub(cube_planet_fc_map, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
+		# 	fr_adi_fc = median_sub(cube_emp_pl, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
 
-# 	injected_flux = aperture_flux(fr_adi_map, [(yfc[k]+yp)], [(xfc[k]+xp)], row['fwhm_mean'],
-# 											  ap_factor=1, mean=False)
-# 	recovered_flux = aperture_flux((fr_adi_fc-fr_adi_res), [(yfc[k]+yp)],
-# 											   [(xfc[k]+xp)], row['fwhm_mean'], ap_factor=1,
-# 											   mean=False)
-# 	thruput = recovered_flux[0] / injected_flux[0]
-# 	throughput.append([xfc[k],yfc[k],thruput])
+		# 	cube_planet_fc_map=cube_inject_companions(cube_crop3,
+		# 											  psf_norm_crop,
+		# 											  rot_angles,ffc[k],
+		# 											  pixel,
+		# 											  rfc,
+		# 											  theta=thetafc)
 
-# throughput=np.asarray(throughput)
+		# 	fr_adi_map = median_sub(cube_planet_fc_map, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
+
+		# 	injected_flux = aperture_flux(fr_adi_map, [(yfc[k]+yp)], [(xfc[k]+xp)], row['fwhm_mean'],
+		# 											  ap_factor=1, mean=False)
+		# 	recovered_flux = aperture_flux((fr_adi_fc-fr_adi_res), [(yfc[k]+yp)],
+		# 											   [(xfc[k]+xp)], row['fwhm_mean'], ap_factor=1,
+		# 											   mean=False)
+		# 	thruput = recovered_flux[0] / injected_flux[0]
+		# 	throughput.append([xfc[k],yfc[k],thruput])
+
+		# throughput=np.asarray(throughput)
+
+		# return throughput
 # rad_dist=np.asarray(rad_dist)
 # i=0
 # j=0
