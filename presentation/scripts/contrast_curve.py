@@ -143,6 +143,7 @@ def get_fakecomp_to_inject(residuals_frame, params_table, offset=9):
 	y_fake_positions    = []
 	flux_fake_positions = []
 	frame_squares = []
+	rad_distances = []
 	for index, row in params_table.iterrows():
 		# why offset*2+1 ?
 		frame_sq = get_square(residuals_frame, offset*2+1, row['optimal_y'], row['optimal_x'])
@@ -151,18 +152,18 @@ def get_fakecomp_to_inject(residuals_frame, params_table, offset=9):
 		rad_dists = []
 		# why offset + 2?
 		for i in range(fwhm, offset+2, fwhm):
-			annulus_indices = get_annulus_segments(frame_sq, i, fwhm)
-			annulus = frame_sq[annulus_indices]
+			annulus = get_annulus_segments(frame_sq, i, fwhm, mode='val')[0]
 			stdev   = np.std(annulus[np.where(annulus !=0.)])
 			rad_dists.append(i)
 			sq_noises.append(stdev)
+		rad_distances.append(rad_dists)
 
 		x_fake_comp = []
 		y_fake_comp = []
 		flux_fake_comp = []
 		end_dist  = int(np.max(rad_dists))
 		for i, r in enumerate(range(fwhm, end_dist, fwhm)):
-			rad_angle = np.arctan(fwhm/r) 
+			rad_angle = np.arctan2(fwhm, r) 
 			step = int(rad_angle*180/np.pi) # degrees
 
 			for angle in range(0, 360, step):
@@ -177,147 +178,140 @@ def get_fakecomp_to_inject(residuals_frame, params_table, offset=9):
 		y_fake_positions.append(np.asarray(y_fake_comp))
 		flux_fake_positions.append(np.asarray(flux_fake_comp))
 
-	return x_fake_positions, y_fake_positions, flux_fake_positions, frame_squares
+	return x_fake_positions, y_fake_positions, flux_fake_positions, frame_squares, rad_distances
 
-
-
-def get_throughput(xs_fake, ys_fake, fluxes_fake, psf, cube, rot_angles, params_table, pixel=0.01225):
+def get_throughput(xs_fake, ys_fake, fluxes_fake, psf, cube, adi_cube_res, rot_angles, params_table, pixel=0.01225):
+	# Should we inject on the oriignal cube?
 	params_table = params_table.reset_index(drop=True)
-	posx, posy = [],[]
+	
+	throughput_list = []
 	for index, row in params_table.iterrows():
-		throughput=[]
-		cube_crop2     = np.zeros_like(cube)
-		cube_crop3     = np.ones_like(cube)*1e-6
-		cube_planet_fc = np.zeros_like(cube)
-		cube_emp_pl    = np.zeros_like(cube)
+		print(f'[INFO] Processing row {index}')
+		throughput = []
+		cube_constback = np.ones_like(cube)*1e-6
 
 		xp, yp = row['optimal_x'], row['optimal_y']
-		cube_half_width = cube.shape[-1]/2
-		source_xy = [(xp, yp)] 
-		flx_min = row['optimal_flux'] - 5
-		flx_max = row['optimal_flux'] + 5
+		cube_center = cube.shape[-1]/2
 
 		# for k in range(len(xfc)):
 		for xpos, ypos, flux in zip(xs_fake[index], ys_fake[index], fluxes_fake[index]): 
-			cube_crop2=cube
+			print(f'[INFO] Processing Fake (x/y)=({xpos},{ypos}) and flux: {flux}')
 			x_abs = xp + xpos
 			y_abs = yp + ypos
-			rfc=np.sqrt((xpos+xp-cube_half_width)**2+(ypos+yp-cube_half_width)**2)
 
-			if x_abs>=cube_half_width and y_abs>=cube_half_width:
-				thetafc = np.arctan((y_abs-cube_half_width)/(x_abs-cube_half_width))*180/np.pi
+			# distance between cube center and fake companion
+			dist_center_fc = np.sqrt((x_abs-cube_center)**2+(y_abs-cube_center)**2)
+			angle_rad = np.arctan2((y_abs-cube_center), (x_abs-cube_center)) 
+			angle_degree = angle_rad*180/np.pi+360
 
-			elif (x_abs<cube_half_width and y_abs>cube_half_width) or (x_abs<cube_half_width and y_abs<cube_half_width):
-				thetafc = np.arctan((y_abs-cube_half_width)/(x_abs-cube_half_width))*180/np.pi+180
-			
-			else:
-				thetafc = np.arctan((y_abs-cube_half_width)/(x_abs-cube_half_width))*180/np.pi+360
+			fakecomp = cube_inject_companions(cube, psf, rot_angles, flux, pixel, dist_center_fc, theta=angle_degree)
 
-			# cube_planet_fc = cube_inject_companions(cube, psf, rot_angles, flux, pixel, rfc, theta=thetafc)
-			posx.append(x_abs)
-			posy.append(y_abs)
-		break
-	return cube, posx, posy, rfc
-		# 	r_0, theta_0, f_0 = firstguess(cube_planet_fc, rot_angles, psf_norm, annulus_width=1, aperture_radius=1,
-		# 									ncomp=1,
-		# 									plsc=pixel, 
-		# 									fmerit='stddev',
-		# 									planets_xy_coord=source_xy, 
-		# 									simplex=False,
-		# 									fwhm=row['fwhm_mean'],
-		# 									imlib='opencv', 
-		# 									interpolation='nearneig',
-		# 									f_range=np.linspace(flx_min,flx_max,10))
-		# 	plpar = [(r_0[0], theta_0[0], f_0[0])]
-		# 	cube_emp_pl=cube_planet_free(plpar, cube_planet_fc, rot_angles, psf_norm, pixel, imlib='opencv',interpolation='lanczos4')
+			r_0, theta_0, f_0 = firstguess(fakecomp, 
+										   rot_angles, 
+										   psf, 
+										   annulus_width=1, 
+										   aperture_radius=1,
+										   ncomp=1,
+										   plsc=pixel, 
+										   fmerit='stddev',
+										   planets_xy_coord=[(xp, yp)], 
+										   simplex=False,
+										   fwhm=row['fwhm_mean'],
+										   imlib='opencv', 
+										   interpolation='nearneig')
 
-		# 	fr_adi_fc = median_sub(cube_emp_pl, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
+			plpar = [(r_0[0], theta_0[0], f_0[0])]
+			cube_fake_removed  = cube_planet_free(plpar, fakecomp, rot_angles, psf, pixel, imlib='opencv',interpolation='lanczos4')
+			frame_fake_removed = median_sub(cube_fake_removed, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
 
-		# 	cube_planet_fc_map=cube_inject_companions(cube_crop3,
-		# 											  psf_norm_crop,
-		# 											  rot_angles,ffc[k],
-		# 											  pixel,
-		# 											  rfc,
-		# 											  theta=thetafc)
+			cube_planet_fc_map = cube_inject_companions(cube_constback,
+														psf,
+														rot_angles,
+														flux,
+														pixel,
+														dist_center_fc,
+														theta=angle_degree)
 
-		# 	fr_adi_map = median_sub(cube_planet_fc_map, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
+			frame_fake = median_sub(cube_planet_fc_map, rot_angles, imlib='opencv', interpolation='lanczos4', mode='fullfr')
 
-		# 	injected_flux = aperture_flux(fr_adi_map, [(yfc[k]+yp)], [(xfc[k]+xp)], row['fwhm_mean'],
-		# 											  ap_factor=1, mean=False)
-		# 	recovered_flux = aperture_flux((fr_adi_fc-fr_adi_res), [(yfc[k]+yp)],
-		# 											   [(xfc[k]+xp)], row['fwhm_mean'], ap_factor=1,
-		# 											   mean=False)
-		# 	thruput = recovered_flux[0] / injected_flux[0]
-		# 	throughput.append([xfc[k],yfc[k],thruput])
 
-		# throughput=np.asarray(throughput)
+			injected_flux  = aperture_flux(frame_fake, [y_abs], [x_abs], row['fwhm_mean'], ap_factor=1, mean=False)
+			recovered_flux = aperture_flux((frame_fake_removed-adi_cube_res), [y_abs], [x_abs], row['fwhm_mean'], ap_factor=1, mean=False)
+			throughput_val = recovered_flux[0] / injected_flux[0]
+			throughput.append([xpos, ypos, throughput_val])
+		throughput_list.append(throughput)
+	return throughput_list
 
-		# return throughput
-# rad_dist=np.asarray(rad_dist)
-# i=0
-# j=0
-# throughput_sum=0
-# throughput_mean=[]
-# somma=0
-# while i<=len(throughput):
-# 	if i==len(throughput):
-# 		throughput_mean.append([throughput_sum/somma,rad_dist[j]])
-# 	else :
-# 		r=np.sqrt((throughput[i,0])**2+(throughput[i,1])**2)
-# 		if r<=rad_dist[j]:
-# 			throughput_sum=throughput_sum+throughput[i,2]
-# 			somma=somma+1
-# 		else:
-# 			throughput_mean.append([throughput_sum/somma,rad_dist[j]])
-# 			throughput_sum=0
-# 			somma=0
-# 			throughput_sum=throughput_sum+throughput[i,2]
-# 			somma=somma+1
-# 			j=j+1
 
-# 	i=i+1
+def post_processing_throughput(throughput_list, rad_distances, table, fr_adi_res, psf, offset=9):
+	cont_list, dist_list = [], []
+	for throughput, rad_dist, (index, row) in zip(throughput_list, rad_distances, table.iterrows()):
+		throughput = np.asarray(throughput)
+		rad_dist   = np.asarray(rad_dist)
+		i=0
+		j=0
+		throughput_sum=0
+		throughput_mean=[]
+		somma=0
+		while i<=len(throughput):
+			if i==len(throughput):
+				throughput_mean.append([throughput_sum/somma,rad_dist[j]])
+			else :
+				xpos  = throughput[i,0]
+				ypos  = throughput[i,1]
+				thput = throughput[i,2]
+				
+				r=np.sqrt(xpos**2+ypos**2)
+				if r<=rad_dist[j]:
+					throughput_sum+=thput
+					somma=somma+1
+				else:
+					throughput_mean.append([throughput_sum/somma, rad_dist[j]])
+					throughput_sum=0
+					somma=0
+					throughput_sum+=thput
+					somma=somma+1
+					j=j+1
+			i=i+1
 
-# throughput_mean=np.asarray(throughput_mean)
-# res=fr_adi_res[(int(row['optimal_y'])-offset):(int(row['optimal_y'])+offset),(int(row['optimal_x'])-offset):(int(row['optimal_x'])+offset)]
-# r=row['fwhm_mean']/2.
-# out_file = open(os.path.join(path, 'contrast_curve.txt'),"w")
-# dist=[]
-# cont=[]
+		throughput_mean=np.asarray(throughput_mean)
+		res=fr_adi_res[(int(row['optimal_y'])-offset):(int(row['optimal_y'])+offset),
+					   (int(row['optimal_x'])-offset):(int(row['optimal_x'])+offset)]
 
-# j=0
-# while r<offset:
-# 	annulus_indices = get_annulus_segments(res, r, row['fwhm_mean']/2.)
-# 	ann = res[annulus_indices]
-# 	ann_abs=np.abs(ann)
-# 	mean=np.mean(ann_abs[ann_abs != 0])
-# 	stddev=np.std(ann_abs[ann_abs != 0])
-# 	contrast=5*stddev/np.max(psf_norm)
-# 	tcorr=tstudent.ppf(contrast,2*np.pi*r-1)
-# 	tcorr=-tcorr
-# 	contrastcorr=(tcorr*stddev*np.sqrt(1+1/(2*np.pi*r))+mean)/np.max(psf_norm)
-# 	if (r<=throughput_mean[j,1]) or ((j+1)>=len(throughput_mean[:,0])):
-# 		contrastcorr_trp=contrastcorr*1/throughput_mean[j,0]
-# 		print(r,throughput_mean[j,0],throughput_mean[j,1])
-# 	else :
-# 		j=j+1
-# 		contrastcorr_trp=contrastcorr*1/throughput_mean[j,0]
-# 		print(r,throughput_mean[j,0],throughput_mean[j,1])
-# 	out_file.write("%s,"%(str(r)))
-# 	out_file.write("%s\n"%(str(contrastcorr_trp)))
-# 	dist.append(r)
-# 	cont.append(contrastcorr_trp)
-# 	r=r+1
+		r=row['fwhm_mean']/2.
+		cont, dist = [], []
+		j=0
+		while r<offset:
+			ann = get_annulus_segments(res, r, r, mode='val')
+			ann_abs=np.abs(ann)
+			mean=np.mean(ann_abs[ann_abs != 0])
+			stddev=np.std(ann_abs[ann_abs != 0])
+
+			contrast=5*stddev/np.max(psf)
+			tcorr=tstudent.ppf(contrast,2*np.pi*r-1)
+			tcorr=-tcorr
+			contrastcorr=(tcorr*stddev*np.sqrt(1+1/(2*np.pi*r))+mean)/np.max(psf)
+
+			raddist    = throughput_mean[j,1]
+			thput_soma = throughput_mean[j,0]
+			if (r<=raddist) or ((j+1)>=len(throughput_mean[:,0])):
+				contrastcorr_trp=contrastcorr*(1/thput_soma)
+			else :
+				j=j+1
+				contrastcorr_trp=contrastcorr*(1/thput_soma)
+
+			dist.append(r)
+			cont.append(contrastcorr_trp)
+			r=r+1
+
+		dist_list.append(dist)
+		cont_list.append(cont)
+
+	return dist_list, cont_list
+
+
+
+
+
 
 # out_file.close()
-
-
-# fig, axes = plt.subplots(2,3)
-# axes = axes.flatten()
-# axes[0].imshow(cube[0], origin='lower')
-# axes[1].imshow(cube_emp[0], origin='lower')
-# axes[2].imshow(fr_adi_res, origin='lower')
-# axes[3].imshow(frame_square, origin='lower')
-# axes[4].imshow(psf_norm_crop, origin='lower')
-# plt.savefig('./figures/partial.png')
-
-# # cube_planet_free()

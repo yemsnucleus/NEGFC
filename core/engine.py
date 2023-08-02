@@ -110,18 +110,24 @@ def get_callbacks(log_dir, loss_precision):
 										   patience=10, 
 										   min_delta=loss_precision,
 										   restore_best_weights=True)
+	if log_dir == 'temp':
+		return es
+
 	tb  = tf.keras.callbacks.TensorBoard(log_dir=log_dir)
 	return [es, tb]
 
 def first_guess(table, cube, psf, backmoments, window_size=30, learning_rate=1e-2, 
 				epochs=1e6, n_jobs=None, 
-				target_folder='.', verbose=0, 
+				target_folder=None, verbose=0, 
 				loss_precision=0.):
 	if n_jobs is None:
 		n_jobs = int(cpu_count()//2)
 
-	os.makedirs(target_folder, exist_ok=True)
-
+	if target_folder is not None:
+		os.makedirs(target_folder, exist_ok=True)
+	else:
+		target_folder = 'temp'
+	
 	optimal_fluxes, optimal_xs, optimal_ys = [], [], []
 	for index, row in table.iterrows():
 		print('[INFO] Training (x, y) = ({:.2f} {:.2f})'.format(row['x'], row['y']))
@@ -143,7 +149,8 @@ def first_guess(table, cube, psf, backmoments, window_size=30, learning_rate=1e-
 						 use_multiprocessing=True, 
 						 verbose=verbose)
 
-		model.save_weights(os.path.join(target_folder, f'model_{index}', 'weights'))
+		if target_folder != 'temp':
+			model.save_weights(os.path.join(target_folder, f'model_{index}', 'weights'))
 
 		best_epoch = np.argmin(hist.history['loss'])
 		best_flux = hist.history['flux'][best_epoch]
@@ -162,8 +169,9 @@ def first_guess(table, cube, psf, backmoments, window_size=30, learning_rate=1e-
 	table['optimal_y'] = optimal_ys
 	table = table.reset_index()
 	table['index'] = table['index'].astype(int)
-	table.to_csv(os.path.join(target_folder, 'prediction.csv'), index=False)
-	
+	if target_folder != 'temp':
+		table.to_csv(os.path.join(target_folder, 'prediction.csv'), index=False)
+		
 	return table
 
 

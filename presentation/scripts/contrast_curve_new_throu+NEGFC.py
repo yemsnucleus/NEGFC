@@ -359,7 +359,8 @@ for k in range(len(xfc)):
             cube_emp_pl[i,:,:]=frame_emp
 
     else :
-        r_0, theta_0, f_0 = firstguess(cube_planet_fc, rot, psf_norm, annulus_width=1, aperture_radius=1,ncomp=1,plsc=pixel, fmerit=mode,planets_xy_coord=source_xy, fwhm=fwhm,f_range=np.linspace(flx_min,flx_max,10))
+        r_0, theta_0, f_0 = firstguess(cube_planet_fc, rot, psf_norm, annulus_width=1, aperture_radius=1,ncomp=1,plsc=pixel, fmerit=mode,
+            planets_xy_coord=source_xy, fwhm=fwhm,f_range=np.linspace(flx_min,flx_max,10))
         plpar = [(r_0, theta_0, f_0)]
         cube_emp_pl=cube_planet_free(plpar, cube_planet_fc, rot, psf_norm, pixel, imlib='opencv',interpolation='lanczos4')
     
