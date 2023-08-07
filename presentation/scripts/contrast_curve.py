@@ -237,6 +237,7 @@ def get_throughput(xs_fake, ys_fake, fluxes_fake, psf, cube, adi_cube_res, rot_a
 
 			injected_flux  = aperture_flux(frame_fake, [y_abs], [x_abs], row['fwhm_mean'], ap_factor=1, mean=False)
 			recovered_flux = aperture_flux((frame_fake_removed-adi_cube_res), [y_abs], [x_abs], row['fwhm_mean'], ap_factor=1, mean=False)
+			
 			throughput_val = recovered_flux[0] / injected_flux[0]
 			throughput.append([xpos, ypos, throughput_val])
 		throughput_list.append(throughput)
@@ -292,8 +293,8 @@ def post_processing_throughput(throughput_list, rad_distances, table, fr_adi_res
 			tcorr=-tcorr
 			contrastcorr=(tcorr*stddev*np.sqrt(1+1/(2*np.pi*r))+mean)/np.max(psf)
 
-			raddist    = throughput_mean[j,1]
 			thput_soma = throughput_mean[j,0]
+			raddist    = throughput_mean[j,1]
 			if (r<=raddist) or ((j+1)>=len(throughput_mean[:,0])):
 				contrastcorr_trp=contrastcorr*(1/thput_soma)
 			else :
