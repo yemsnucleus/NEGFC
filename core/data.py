@@ -226,7 +226,8 @@ def load_data(root):
 													   negative=False,
 													   full_output=True, 
 													   plot=False,
-													   debug=False)  
+													   debug=False,
+													   verbose=False)  
 
 		psf_norm = normalize_psf(psf_center, 
 								fwhm=fwhm_sphere, 

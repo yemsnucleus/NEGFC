@@ -14,7 +14,7 @@ import pandas as pd
 import numpy as np
 import os
 
-def chisquare_mod ( modelParameters,sourcex, sourcey, frame, ang, plsc, psf_norma, fwhm, fmerit,
+def chisquare_mod (modelParameters,sourcex, sourcey, frame, ang, plsc, psf_norma, fwhm, fmerit,
 			  svd_mode='lapack'):
 		try:
 			r, theta, flux = modelParameters
