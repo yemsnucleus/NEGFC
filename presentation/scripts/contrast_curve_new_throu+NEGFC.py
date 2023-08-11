@@ -47,9 +47,6 @@ def chisquare_mod ( modelParameters,sourcex, sourcey, frame, ang, plsc, psf_norm
         else:
             raise RuntimeError('`fmerit` choice not recognized')
 
-
-    
-
 def inject_fcs_cube_mod(array, psf_template, angle_list, flevel, plsc, rad_dists, 
                     theta,n_branches=1, imlib='opencv', verbose=True):
     
@@ -72,10 +69,6 @@ def inject_fcs_cube_mod(array, psf_template, angle_list, flevel, plsc, rad_dists
     array_out = array + tmp
         
     return array_out   
-    
-
-
-
 
 #iniziamo con aprire il cubo (center_im), la psf (median_unsat) e gli angoli di rotazione (rotnth)
 print('Digita il nome del tuo sistema')
