@@ -79,8 +79,16 @@ def get_angle_radius(x, y, width, height):
 	return radius, theta0
 
 def preprocess(path, lambda_ch=0, p=25, load_preprocessed=True):
-	cube, psf, rot_angles, table = preprocess_and_save(path, 
-		lambda_ch=0, load_preprocessed=load_preprocessed)
+	if isinstance(path, str):
+		cube, psf, rot_angles, table = preprocess_and_save(path, 
+			lambda_ch=0, load_preprocessed=load_preprocessed)
+
+	if isinstance(path, dict):
+		cube = path['cube']
+		psf = path['psf']
+		rot_angles = path['rot_angles']
+		table = None
+
 	cube = cube_derotate(cube, rot_angles, nproc=4, imlib='opencv', interpolation='nearneig')
 	
 	# ---- estimating noise ----

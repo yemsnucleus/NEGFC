@@ -1,10 +1,11 @@
 import multiprocessing as mp
+import pandas as pd
 import numpy as np
 
 from vip_hci.fm import cube_inject_companions
 from joblib import Parallel, delayed
 
-from core.engine import rotate_cube
+from core.engine import rotate_cube, preprocess, first_guess, get_angle_radius
 
 
 def inject_companion(x, y, flux, cube, psf, rot_angles, pixel=0.01225):
@@ -82,14 +83,49 @@ def get_contrast(regions, ap_phot, factor=5):
 		contrast.append(factor*noise/ap_phot)
 	return contrast
 
-def get_throughput(x_abs, y_abs, cube):
-	_, dim0,dim1 = cube.shape
+def find_parameters(cube, psf, rot_angles, flux, x, y, fwhm, window_size):
+	inputs = {'cube': cube, 'psf':psf, 'rot_angles':rot_angles}
+	table, cube, psf, rot_angles, backmoments = preprocess(inputs)
+	table = pd.DataFrame({'x': [x], 'y': [y], 'flux': flux, 'fwhm_mean':fwhm })
+	table = first_guess(table, cube, psf, 
+				backmoments=backmoments,
+				window_size=window_size, 
+				learning_rate=1e-0, 
+				epochs=1e6,
+				target_folder=None,
+				verbose=0,
+				loss_precision=0.)
+	return table
 
-	x = x_abs - dim0/2
-	y = y_abs - dim1/2
+def get_throughput(cube, psf, rot_angles, flux, fwhm, window_size=15, pixel=0.01225):
+	_, dim0, dim1 = cube.shape
+	theta = np.random.uniform(0, 360)
+	radius = fwhm/2
 
-	radius = np.sqrt((x-dim1/2)**2+(y-dim0/2)**2)
-	angle_rad = np.arctan2((y-dim1/2), (x-dim0/2)) 
-	angle_degree = angle_rad*180/np.pi+360
+	injected_cube = cube_inject_companions(cube, 
+	                                  psf[0], 
+	                                  rot_angles, 
+	                                  flux, 
+	                                  pixel, 
+	                                  radius, 
+	                                  theta=theta)
 
-	print(angle_degree)
+	
+	posy = radius * np.sin(np.deg2rad(theta)) + dim1/2. - 0.5
+	posx = radius * np.cos(np.deg2rad(theta)) + dim0/2. - 0.5
+
+
+	table = find_parameters(cube, psf, rot_angles, flux, posx, posy, fwhm, window_size)
+
+	r_star, theta_star = get_angle_radius(table['optimal_x'], table['optimal_y'], 
+										  width=dim1, height=dim0)
+
+	fakecomp = cube_inject_companions(np.zeros_like(cube), 
+	                                  psf[0], 
+	                                  rot_angles, 
+	                                  table['optimal_flux'].values[0], 
+	                                  pixel, 
+	                                  r_star.values[0], 
+	                                  theta=theta_star.values[0])
+
+	return table, injected_cube, fakecomp
