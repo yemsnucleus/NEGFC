@@ -4,11 +4,6 @@ The present model can be described as a hybrid approach that combines the use of
 
 Our methodology draws inspiration from the Negative Fake Companion technique, which employs a normalized Point Spread Function (PSF) to emulate the flux emitted by companions. The underlying concept involves identifying a scale factor that, when applied to the PSF, effectively eliminates the companion from the original image, thereby preserving solely the background noise (see image bellow).
 
-<p align="center">
-<img src="https://github.com/yemsnucleus/NEGFC/blob/main/figures/negfc_example.png?raw=true" alt="Image" width="80%"/>
-</center>
-</p>
-
 The code implemented in our study leverages the VIP framework to perform Principal Component Analysis (PCA) combined with Angular Differential Imaging (ADI), enabling the identification of sources and determining their respective coordinates. 
 Specifically, our objective is to detect potential companions exhibiting a brightness level surpassing a pre-defined signal-to-noise ratio threshold.
 
@@ -44,8 +39,19 @@ pip install tensorflow==2.10
 │     │   📜 data.py: Data loader and preprocessing functions
 │     │   📜 engine.py: Main script that uses `model.py` and `data.py` to automate and simplify the execution of the pipeline
 │     │   📜 model.py: Flux model implementation
+│     │   📜 engine.py: Utils functions to run firstguess pipeline
+│     │   📜 layers.py: Layers used by the flux/pos estimator
+│     │   📜 losses.py: Custom losses used to optimize flux and position in the firstguess method
+│     │   📜 mcmc.py: MCMC utils (not finished yet)
+│     │   📜 metrics.py: Contrast curve functions
 │ 
-└─── 📂 figures
+└─── 📂 presentation
+│     │   📂 figures: figures and diagrams
+│     │   📂 notebooks: juypyter notebooks associated to this package usage
+│     │    └─── 📑 first_guess.ipynb: A tutorial, demonstrating the functionality of the firstguess pipeline.
+│     │    └─── 📑 contrast_curve.ipynb: A tutorial to build contrast curve.
+│     │   📂 scripts: command line scripts to run the firstguess pipeline
+│     │    └─── 📜 train.py: script to run the pipeline from command line
 │ 
 └─── 📜 .gitignore: Files to ignore when pushing on GitHub
 └─── 📜 README.md: Markdown readme (what you are reading now)    
@@ -53,13 +59,11 @@ pip install tensorflow==2.10
 └─── 📜 build_container.sh: Script to create a container using the Dockerfile configuration
 └─── 📜 run_container.sh: Script to run the container created using `build_container.sh`
 └─── 📜 requirements.txt: Python dependencies
-└─── 📜 train.py: script to run the pipeline from command line
-└─── 📑 tutorial.ipynb: A tutorial, demonstrating the functionality of the pipeline.
 ```
 
 ## Example 
 ```
-python train.py --data ./data/dhtau
+python -m presentation.scripts.train --data ./data/dhtau
 ```
 In this case we are loading `dhtau` folder wich inside it should contains: 
 - `center_im.fits`: Cube
@@ -72,4 +76,5 @@ In this case we are loading `dhtau` folder wich inside it should contains:
 ## To-do 🕥
 - ~VIP preprocessing~
 - ~First guess using Tensorflow~
-- Final optimization using Hamiltonian MCMC
+- ~Contrast curves~
+- Final optimization using Hamiltonian MCMC (implemented with errors)
