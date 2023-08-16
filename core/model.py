@@ -16,9 +16,10 @@ class CustomModel(tf.keras.Model):
 		super(CustomModel, self).__init__(**kwargs)
 		self.model_type = model_type
 
-	def compile(self, backmoments=None, **kwargs):
+	def compile(self, backmoments=None, fwhm=None, **kwargs):
 		super(CustomModel, self).compile(**kwargs)
 		self.backmoments = backmoments
+		self.fwhm = fwhm
 
 	def train_step(self, data):
 		# Unpack the data. Its structure depends on your model and
@@ -29,7 +30,8 @@ class CustomModel(tf.keras.Model):
 			y_pred = self(x, training=True)  # Forward pass
 			mean_loss, std_loss = reduce_moments(y_true=y, 
 												 y_pred=y_pred, 
-												 moments=self.backmoments)
+												 moments=self.backmoments,
+												 fwhm=self.fwhm)
 			loss = mean_loss + std_loss
 
 		# Compute gradients

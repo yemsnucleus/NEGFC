@@ -61,10 +61,9 @@ def get_rings(x, y, fhwm, cube, rot_angles=None, num_rings=None, n_jobs=None):
 	region = cube[None,...]*masks[:, None,...]
 	return region, rad_distances[:-1]
 
-def get_aperture_photometry(psfs, flux, fwhm=4):
+def get_aperture_photometry(psfs, fwhm=4):
 	x = psfs.shape[-1]/2
 	y = psfs.shape[-2]/2
-	psfs = psfs * flux
 	mask = create_circle_mask(psfs.shape[1:], (x,y), radius=fwhm/2)
 	cube_masked = psfs*mask[None,...]
 	apflux = np.sum(cube_masked, axis=(1, 2))
@@ -172,7 +171,7 @@ def get_throughput(cube, psf, rot_angles, fwhm, rad_distances, regions, K=4, win
 		throughputs.append(throughput)
 
 	tables = pd.concat(tables)
-	tables['rad_dist'] = np.repeat(rad_distances, 5)
+	tables['rad_dist'] = np.repeat(rad_distances, K)
 	return throughputs, tables
 
 
@@ -184,6 +183,6 @@ def correct_contrast(contrast_curve, regions, ap_phot):
 		tau = stats.t.ppf(q=contrast, df=df_2)
 		stddev = np.std(in_region)
 
-		corr_contrast = tau*stddev*np.sqrt(1+1/(df_2))/ap_phot 	
+		corr_contrast = -tau*stddev*np.sqrt(1+1/(df_2))/ap_phot 	
 		corrected_contrasts.append(corr_contrast)
 	return corrected_contrasts

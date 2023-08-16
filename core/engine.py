@@ -14,6 +14,7 @@ from multiprocessing import cpu_count
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.core.util import event_pb2
 
+
 def rotate_cube(cube, rot_ang, derotate='tf', verbose=0):
 
 	if derotate=='tf':
@@ -146,7 +147,9 @@ def first_guess(table, cube, psf, backmoments, window_size=30, learning_rate=1e-
 
 		model = create_model(input_shape=input_shape, init_flux=row['flux'])
 
-		model.compile(backmoments=backmoments, optimizer=Adam(learning_rate))
+		model.compile(backmoments=backmoments, 
+					  fwhm=row['fwhm_mean'], 
+					  optimizer=Adam(learning_rate))
 
 		ckbs = get_callbacks(os.path.join(target_folder, f'model_{index}', 'logs'),
 							 loss_precision=loss_precision)
