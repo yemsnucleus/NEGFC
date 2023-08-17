@@ -61,11 +61,11 @@ def get_rings(x, y, fhwm, cube, rot_angles=None, num_rings=None, n_jobs=None):
 	region = cube[None,...]*masks[:, None,...]
 	return region, rad_distances[:-1]
 
-def get_aperture_photometry(psfs, fwhm=4):
-	x = psfs.shape[-1]/2
-	y = psfs.shape[-2]/2
-	mask = create_circle_mask(psfs.shape[1:], (x,y), radius=fwhm/2)
-	cube_masked = psfs*mask[None,...]
+def get_aperture_photometry(cube, fwhm=4):
+	x = cube.shape[-1]/2
+	y = cube.shape[-2]/2
+	mask = create_circle_mask(cube.shape[1:], (x,y), radius=fwhm/2)
+	cube_masked = cube*mask[None,...]
 	apflux = np.sum(cube_masked, axis=(1, 2))
 	apflux = np.mean(apflux)	
 	return apflux

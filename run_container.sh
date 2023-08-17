@@ -24,7 +24,7 @@ else
    --privileged=true \
    --mount "type=bind,src=$(pwd),dst=/home/" \
    --workdir /home/ \
-   -p 8888:8888 \
+   -p 8886:8886 \
    -p 6006:6006 \
    -e HOST="$(whoami)" \
    negfc_cnn bash
