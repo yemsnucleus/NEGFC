@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
+import time
 
 from photutils.aperture import aperture_photometry, CircularAperture
 from core.metrics import inject_companion, get_rings, get_throughput, get_aperture_photometry, get_contrast
@@ -41,11 +42,8 @@ regions, rad_dist_px = get_rings(row['optimal_x'], row['optimal_y'],
                                  rot_angles=rot_angles,
                                  num_rings=num_rings)
 
-aper = CircularAperture((clean_cube.shape[1]/2, clean_cube.shape[2]/2), r=row['fwhm_mean'] / 2.) 
-obj_flux_i = aperture_photometry(clean_cube[0], aper, method='exact')
-ap_phot = obj_flux_i['aperture_sum'][0]
-
 print('[INFO] Calculating Throughput. You may take the day')
+start = time.time()
 throughput, opt_summary = get_throughput(
                             clean_cube, 
                             psfs, 
@@ -56,7 +54,12 @@ throughput, opt_summary = get_throughput(
                             K=4,
                             window_size=10,
                             optimize=True)
+end = time.time()
+print('ELAPSED: ', end - start)
 
-
+opt_summary.to_csv(os.path.join(predlogs, 'opt_summary.csv'), index=False)
 with open(os.path.join(predlogs, 'throughput.pkl'), "wb") as fp:   #Pickling
     pickle.dump(throughput, fp)
+    
+    
+print('ELAPSED: ', end - start)

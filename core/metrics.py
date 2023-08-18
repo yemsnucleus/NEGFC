@@ -123,7 +123,7 @@ def get_throughput(cube, psf, rot_angles, fwhm, rad_distances, regions, K=4, win
 	_, dim0, dim1 = cube.shape
 	
 	theta_angles = np.linspace(0, 360, K+1) [1:]
-	fluxes = np.random.uniform(cube.std()*5, cube.std()*10, K)
+	fluxes = np.random.uniform(cube.std()*10, cube.std()*20, K)
 
 	throughputs = []
 	tables = []
@@ -186,3 +186,11 @@ def correct_contrast(contrast_curve, regions, ap_phot):
 		corr_contrast = -tau*stddev*np.sqrt(1+1/(df_2))/ap_phot 	
 		corrected_contrasts.append(corr_contrast)
 	return corrected_contrasts
+
+# from photutils.aperture import aperture_photometry, CircularAperture
+# aper = CircularAperture((psfs.shape[1]/2, psfs.shape[2]/2), 
+#                         r=row['fwhm_mean']) 
+
+# obj_flux_i = aperture_photometry(psfs[0], aper, method='exact')
+# ap_phot = obj_flux_i['aperture_sum'][0]
+# ap_phot
