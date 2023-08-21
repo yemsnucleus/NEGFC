@@ -2,6 +2,7 @@ from scipy import stats
 import multiprocessing as mp
 import pandas as pd
 import numpy as np
+import vip_hci as vip
 
 from vip_hci.fm import cube_inject_companions
 from joblib import Parallel, delayed
@@ -33,7 +34,7 @@ def create_circle_mask(image_shape, center, radius, n_jobs=4):
 	mask = distance_from_center <= radius
 	return mask
 
-def get_rings(x, y, fhwm, cube, rot_angles=None, num_rings=None, n_jobs=None):
+def get_rings(x, y, fhwm, cube, rot_angles=None, num_rings=None, n_jobs=1):
 
 	if n_jobs is None:
 		n_jobs = mp.cpu_count()//2
@@ -43,7 +44,7 @@ def get_rings(x, y, fhwm, cube, rot_angles=None, num_rings=None, n_jobs=None):
 	nframes, width, height = cube.shape
 	rad_distances = np.arange(radius, np.ceil(num_rings*radius), radius)
 
-	masks = Parallel(n_jobs=n_jobs)(delayed(create_circle_mask)\
+	masks = Parallel(n_jobs=1)(delayed(create_circle_mask)\
 							((width, height), 
 							 [x, y], 
 							 rdist) \
@@ -96,7 +97,45 @@ def find_parameters(table, cube, psf, rot_angles, window_size):
 				loss_precision=0.)
 	return table
 
-def get_throughput(cube, psf, rot_angles, fwhm, rad_distances, regions, K=4, window_size=15, pixel=0.01225, n_jobs=None, optimize=True):
+def vip_firstguess(table, cube, psf, rot_angles, window_size):
+	print("Data is being loaded as in function 'find_parameters'")
+	inputs = {'cube': cube, 'psf':psf, 'rot_angles':rot_angles}
+	_, cube, psf, rot_angles, backmoments = preprocess(inputs)
+	#el cube esta derotated pero hay que obtener el fwhm del psf y normalizar el psf pa pasarlo
+	#falta el centro de la imagen y checkear la transformacion
+          
+	optimal_fluxes, optimal_xs, optimal_ys = [], [], []
+	nfwhm = 3
+	print("PSF SHAPE", psf.shape)
+	for i in range(len(table)):
+		r, theta, f  = vip.fm.negfc_simplex.firstguess(cube, 
+											rot_angles,       
+											psf[0],
+											fmerit = 'stddev',
+											ncomp=1, 
+											planets_xy_coord=[(table.iloc[i].x, table.iloc[i].y)],
+											fwhm=int(nfwhm)*float(table.iloc[i].fwhm_mean),
+											simplex=True,
+											verbose=False,
+											annulus_width=int(nfwhm*(table.iloc[i].fwhm_mean)),
+											aperture_radius=2,
+											f_range=np.linspace(table.iloc[i].flux -10, table.iloc[i].flux*2, 10),
+											imlib='opencv',
+											interpolation='lanczos4',
+											plot=False,
+											mu_sigma=False)
+		posy = r * np.sin(np.deg2rad(theta)) + np.ceil(cube.shape[1]/2)
+		posx = r * np.cos(np.deg2rad(theta)) + np.ceil(cube.shape[2]/2)
+		optimal_fluxes.append(f)
+		optimal_xs.append(posx)
+		optimal_ys.append(posy)
+	table['optimal_flux'] = optimal_fluxes
+	table['optimal_x'] = optimal_xs
+	table['optimal_y'] = optimal_ys 
+	return table
+          
+
+def get_throughput(cube, psf, rot_angles, fwhm, rad_distances, regions, K=4, window_size=15, method="tf", pixel=0.01225, n_jobs=None, optimize=True):
 	""" Throughput function that measure the performance of the processing image algorithms
 	
 	We consider the following pipeline: 
@@ -140,9 +179,11 @@ def get_throughput(cube, psf, rot_angles, fwhm, rad_distances, regions, K=4, win
 
 
 		table = pd.DataFrame({'x': posx, 'y': posy, 'flux': fluxes-(cube.std()*3), 'fwhm_mean':fwhm})
-
 		if optimize:
-			table = find_parameters(table, injected_cube, psf, rot_angles, window_size)
+			if method == "vip":
+				table = vip_firstguess(table, injected_cube, psf, rot_angles, window_size)
+			elif method == "tf":
+				table = find_parameters(table, injected_cube, psf, rot_angles, window_size)
 		else:
 			table['optimal_flux'] = fluxes
 			table['optimal_x'] = posx

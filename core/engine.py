@@ -138,6 +138,7 @@ def first_guess(table, cube, psf, backmoments, window_size=30, learning_rate=1e-
 		target_folder = 'temp'
 	
 	optimal_fluxes, optimal_xs, optimal_ys = [], [], []
+    
 	for index, row in table.iterrows():
 		print('[INFO] Training (x, y) = ({:.2f} {:.2f})'.format(row['x'], row['y']))
 		companion = get_companions(cube, x=row['x'], y=row['y'], window_size=window_size)
