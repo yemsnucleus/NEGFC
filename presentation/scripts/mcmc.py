@@ -85,23 +85,42 @@ def run(opt):
     start = time.time()
     os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu
     ROOT = './presentation/results/mcmc'
-    WEIGHTS_FOLDER = os.path.join(ROOT, opt.exp_name)
-    os.makedirs(WEIGHTS_FOLDER, exist_ok=True)
 
     # ==========================================================
     # Loading data =============================================
     # ==========================================================
     cube, header = fits.getdata(os.path.join(opt.data, 'center_im.fits'), header=True)
+    print('[INFO] CUBE SIZE: ', cube.shape)
     psf  = fits.getdata(os.path.join(opt.data, 'median_unsat.fits'))
     ang  = fits.getdata(os.path.join(opt.data, 'rotnth.fits'))
     ang  = -ang
     filter_name = header['HIERARCH ESO INS COMB IFLT']
     filters = parse_filter_code(filter_name)
-    
+    print('[INFO] AVAILABLE FILTERS: ', filters)
+    if len(psf.shape) == 3:
+        psf = psf[None, ...]
+        print('[INFO] PSF Reshaped: ', psf.shape)
+        
     # ==========================================================
     # Initial [radius - theta - Flux] ==========================
     # ==========================================================
-    init_params = [344.35538038, 257.24436263, 5281.53524647] 
+    try:
+        with open(os.path.join(opt.init_file), 'r') as f:
+            print('[INFO] LOADING ', opt.init_file)
+            init_conf = toml.load(f)
+            init_params = [init_conf['sep']['value'],
+                           init_conf['theta']['value'],
+                           init_conf['flux']['value']]
+            print('[INFO] INITIAL VALUES SUCCEFULY LOADED')
+            
+    except Exception as e:
+        print(e)
+        print('[WARNING] USING DEFAULT VALUES FROM THE SCRIPT')
+        init_params = [344.35538038, 257.24436263, 5281.53524647] 
+
+    WEIGHTS_FOLDER = os.path.join(ROOT, opt.exp_name, filters[opt.ch])
+    os.makedirs(WEIGHTS_FOLDER, exist_ok=True)
+
 
     # ==========================================================
     # Normalizing PSF ==========================================
@@ -165,7 +184,7 @@ def run(opt):
                         angs=parallactic_angles, 
                         psfn=norm_psf[0], # First psf 
                         initial_state=init_params,
-                        ncomp=1,
+                        ncomp=2,
                         **algo_params, 
                         **negfc_params,
                         **mcmc_params, 
@@ -181,7 +200,7 @@ def run(opt):
     conf_hparams = opt.__dict__
     conf_hparams['execution_time'] = np.round(end - start, 4)
 
-    with open(os.path.join(project_path, 'config.toml'), 'w') as f:
+    with open(os.path.join(WEIGHTS_FOLDER, 'config.toml'), 'w') as f:
         toml.dump(conf_hparams, f)
 
 
@@ -189,11 +208,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', default='./data/real/eta_tel_b', type=str,
                     help='Data directory')
-
+    parser.add_argument('--init-file', default='./data/etatelb/init.toml', type=str,
+                    help='TOML File with the initial values for sep, theta and flux')
+    
     parser.add_argument('--exp-name', default='', type=str,
                     help='test')
 
-    parser.add_argument('--ch', default=0, type=float,
+    parser.add_argument('--ch', default=0, type=int,
                         help='Channel filter ID')
 
     parser.add_argument('--nproc', default=1, type=int,
@@ -201,7 +222,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--nwalkers', default=100, type=int,
                         help='Number of walkers')
-    parser.add_argument('--niter', default=10000, type=int,
+    parser.add_argument('--niter', default=2000, type=int,
                         help='Maximum number of iterations')
 
 
