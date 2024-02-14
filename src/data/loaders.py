@@ -2,16 +2,22 @@ import numpy as np
 import os
 
 from vip_hci.fits import open_fits
-from .preprocessing import modify_shape_and_center, parse_filter_code, shift_and_crop_cube
+from .preprocessing import modify_shape_and_center, parse_filter_code, shift_and_crop_cube, crop_cube
 from .utils import load_dataset
 
-def load_data(root, n_jobs=1):
+def load_data(root, cropsize=None, n_jobs=1):
 
     if root.endswith('.pickle'):
-        return load_dataset(root)
-        
+        dataset = load_dataset(root)
+        if cropsize is not None:
+            dataset['cube'] = crop_cube(dataset['cube'], size=cropsize)
+        return dataset
+    
     cube_route = os.path.join(root, 'center_im.fits')
-    cube, header = open_fits(cube_route, header=True) 
+    cube, header = open_fits(cube_route, header=True)
+
+    if cropsize is not None:
+        cube = crop_cube(cube, size=200)
 
     psf_route = os.path.join(root, 'median_unsat.fits')
     psf       = open_fits(psf_route, header=False)
