@@ -3,7 +3,7 @@ import numpy as np
 from vip_hci.preproc.recentering import frame_center, cube_recenter_2dfit
 from vip_hci.fm.negfc_simplex import firstguess
 from vip_hci.psfsub import pca
-
+from vip_hci.fm                     import normalize_psf as normalize_psf_vip
 from astropy.stats                  import sigma_clipped_stats, gaussian_fwhm_to_sigma, gaussian_sigma_to_fwhm
 from astropy.modeling               import models, fitting
 from skimage.feature                import peak_local_max
@@ -42,12 +42,18 @@ def normalize_psf(psf):
                                                        full_output=True, 
                                                        plot=False,
                                                        debug=False)
+    
+        psf_norm, fwhm_flux, fwhm_val = normalize_psf_vip(psf_center, 
+                                                  fwhm=fwhm_sphere,
+                                                  full_output=True, 
+                                                  verbose=False) 
 
-        psf_list.append(psf_center)
-        fwhm.append(fwhm_sphere)
+        psf_list.append(psf_norm)
+        fwhm.append(np.mean(fwhm_val))
 
     psf_list = np.array(psf_list)
     fwhm = np.array(fwhm)
+    
     return psf_list, fwhm
 
 

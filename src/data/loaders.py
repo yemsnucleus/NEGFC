@@ -5,7 +5,7 @@ from vip_hci.fits import open_fits
 from .preprocessing import modify_shape_and_center, parse_filter_code, shift_and_crop_cube, crop_cube
 from .utils import load_dataset
 
-def load_data(root, cropsize=None, n_jobs=1):
+def load_data(root, cropsize=None, n_jobs=1, return_header=False):
 
     if root.endswith('.pickle'):
         dataset = load_dataset(root)
@@ -47,9 +47,16 @@ def load_data(root, cropsize=None, n_jobs=1):
         psf_final.append(psf_even)
     psf_final = np.array(psf_final)
 
-    return {
+
+    dataset =  {
         'cube': cube,
         'psf': psf_final,
         'q': rot_ang,
-        'filters': filters 
+        'filters': filters,
+        'name': header['HIERARCH ESO OBS TARG NAME']
     }
+
+    if return_header:
+        return dataset, header
+    else:
+        return dataset
