@@ -10,11 +10,14 @@ from skimage.feature                import peak_local_max
 from vip_hci.var.shapes             import get_square
 from vip_hci.metrics.snr_source     import snr
 import pandas as pd
+import time
 
 def normalize_psf(psf):
     psf_list = []
     fwhm = []
+    times = []
     for lambda_psf in psf:
+        start_time = time.time()
         curr_psf = lambda_psf[0]
         ceny, cenx = frame_center(curr_psf)
         imside = curr_psf.shape[0]
@@ -50,36 +53,46 @@ def normalize_psf(psf):
 
         psf_list.append(psf_norm)
         fwhm.append(np.mean(fwhm_val))
+        elapsed_time = time.time() - start_time
+        times.append(elapsed_time)
 
     psf_list = np.array(psf_list)
     fwhm = np.array(fwhm)
     
-    return psf_list, fwhm
+    return psf_list, fwhm, np.array(times)
 
 
 def perform_pca(cube, q_angles, **kwargs):
     cube_list = []
+    times = []
     for curr_cube in cube:
+        start_time = time.time()
         fr_pca = pca(curr_cube, 
                      q_angles,
                      full_output=False,
                      **kwargs)
         cube_list.append(fr_pca)
-    return np.array(cube_list)
+        elapsed_time = time.time() - start_time
+        times.append(elapsed_time)
+    return np.array(cube_list), np.array(times)
 
 
 def detection(frames, fwhm, norm_psf):
 
     responses = []
+    times = []
     for index, curr_frame in enumerate(frames):
+        start_time = time.time()
         res = get_intersting_coords(curr_frame, 
                                     norm_psf[index, 0], 
                                     fwhm=fwhm[index], 
                                     bkg_sigma = 5, 
                                     plot=False)
         responses.append(res)
+        elapsed_time = time.time() - start_time
+        times.append(elapsed_time)
 
-    return responses
+    return responses, np.array(times)
 
 def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
     """Get coordinates of potential companions
@@ -173,9 +186,12 @@ def get_intersting_coords(frame, psf_norm, fwhm=4, bkg_sigma = 5, plot=False):
     table['y']    = yy
     table['flux'] = fluxes
     table['fwhm_mean'] = fwhm_mean
-    table['snr']  = table.apply(lambda col: snr(frame, 
-                                                (col['x'], col['y']), 
-                                                fwhm, False, verbose=False), axis=1)
+    try:
+        table['snr']  = table.apply(lambda col: snr(frame, 
+                                                    (col['x'], col['y']), 
+                                                    fwhm, False, verbose=False), axis=1)
+    except:
+        table['snr'] = -1
 
     return table
 
