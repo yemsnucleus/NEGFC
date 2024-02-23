@@ -208,7 +208,7 @@ def optimize(cube, q_angles, norm_psf, fwhm, response, simplex=False):
                          imlib='opencv',
                          fwhm=fwhm,
                          simplex=simplex,
-                         annulus_width=4*fwhm,
+                         annulus_width=2*fwhm,
                          aperture_radius=2,
                          algo_options={
                              'nproc': 32,
